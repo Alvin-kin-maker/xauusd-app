@@ -1,0 +1,96 @@
+{
+  "events": [
+    {
+      "title": "Empire State Manufacturing Index",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-16T08:30:00",
+      "time_str": "2026-03-16 08:30"
+    },
+    {
+      "title": "President Trump Speaks",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-16T11:30:00",
+      "time_str": "2026-03-16 11:30"
+    },
+    {
+      "title": "Pending Home Sales m/m",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-17T10:00:00",
+      "time_str": "2026-03-17 10:00"
+    },
+    {
+      "title": "Core PPI m/m",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T08:30:00",
+      "time_str": "2026-03-18 08:30"
+    },
+    {
+      "title": "PPI m/m",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T08:30:00",
+      "time_str": "2026-03-18 08:30"
+    },
+    {
+      "title": "Federal Funds Rate",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T14:00:00",
+      "time_str": "2026-03-18 14:00"
+    },
+    {
+      "title": "FOMC Economic Projections",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T14:00:00",
+      "time_str": "2026-03-18 14:00"
+    },
+    {
+      "title": "FOMC Statement",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T14:00:00",
+      "time_str": "2026-03-18 14:00"
+    },
+    {
+      "title": "FOMC Press Conference",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-18T14:30:00",
+      "time_str": "2026-03-18 14:30"
+    },
+    {
+      "title": "Unemployment Claims",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-03-19T08:30:00",
+      "time_str": "2026-03-19 08:30"
+    },
+    {
+      "title": "Philly Fed Manufacturing Index",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-19T08:30:00",
+      "time_str": "2026-03-19 08:30"
+    },
+    {
+      "title": "New Home Sales",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-19T10:00:00",
+      "time_str": "2026-03-19 10:00"
+    },
+    {
+      "title": "Fed Chair Powell Speaks",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-03-21T13:30:00",
+      "time_str": "2026-03-21 13:30"
+    }
+  ],
+  "cached_at": "2026-03-17T21:31:17.248935"
+}

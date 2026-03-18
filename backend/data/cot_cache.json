@@ -1,0 +1,16 @@
+{
+  "managed_money_long": 213752,
+  "managed_money_short": 53607,
+  "net_position": 160145,
+  "net_change": 180897,
+  "long_pct": 79.9,
+  "commercial_long": 84834,
+  "commercial_short": 285417,
+  "commercial_net": -200583,
+  "commercial_bias": "bullish",
+  "sentiment": "bullish",
+  "report_date": "2026-03-03",
+  "source": "CFTC",
+  "available": true,
+  "cached_at": "2026-03-12T16:38:09.441995"
+}
