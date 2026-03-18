@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import MISSED_ENTRY_CANDLES, MAX_CHASE_PERCENT
+from utils.config import MISSED_ENTRY_CANDLES, MAX_CHASE_PERCENT 
 
 
 # ------------------------------------------------------------
@@ -110,10 +110,25 @@ def model_london_sweep_reverse(b1, b2, b3, b4, b5, b6, b7):
         score += 5
         reasons.append("FVG present ✓")
 
+    # Sweep direction must agree with H4 + D1 bias — hard gate
+    h4_bias = b2["timeframes"]["H4"]["bias"]
+    d1_bias = b2["timeframes"]["D1"]["bias"]
+
+    direction_valid = False
+    if b3["asian_high_swept"] and h4_bias == "bearish" and d1_bias in ["bearish", "neutral"]:
+        direction_valid = True
+        reasons.append(f"Sweep direction aligns with H4 ({h4_bias}) + D1 ({d1_bias}) ✓")
+    elif b3["asian_low_swept"] and h4_bias == "bullish" and d1_bias in ["bullish", "neutral"]:
+        direction_valid = True
+        reasons.append(f"Sweep direction aligns with H4 ({h4_bias}) + D1 ({d1_bias}) ✓")
+    else:
+        reasons.append(f"Sweep direction conflicts with H4 ({h4_bias}) + D1 ({d1_bias}) ✗ — rejected")
+
     validated = (
         london_active and
         asian_swept and
         bias_ok and
+        direction_valid and
         score >= 60
     )
 

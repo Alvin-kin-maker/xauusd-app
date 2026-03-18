@@ -359,13 +359,17 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
     else:
         bias = "neutral"
 
-    # Check most recent BOS direction
+    # Check most recent BOS direction + freshness
+    bos_active = False
     if bos_events:
         last_bos = bos_events[-1]
         if last_bos["type"] == "bullish_bos":
             bias = "bullish"
         elif last_bos["type"] == "bearish_bos":
             bias = "bearish"
+        # BOS is fresh if it happened within last 20 candles on this TF
+        if len(df) - last_bos["broken_at"] <= 20:
+            bos_active = True
 
     # Check if CHOCH just fired (potential reversal)
     choch_active = False
@@ -419,6 +423,7 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
         "last_sh":        market_structure["last_sh"],
         "last_sl":        market_structure["last_sl"],
         "bos":            bos_events[-3:] if bos_events else [],
+        "bos_active":     bos_active,
         "choch":          choch_events[-2:] if choch_events else [],
         "choch_active":   choch_active,
         "mss":            mss_events[-2:] if mss_events else [],
@@ -506,7 +511,7 @@ def run(candle_store):
     m5_result  = tf_results["M5"]
     h1_result  = tf_results["H1"]
 
-    recent_bos   = m15_result["bos"] or m5_result["bos"]
+    recent_bos   = m15_result["bos_active"] or m5_result["bos_active"]
     recent_choch = m15_result["choch_active"] or m5_result["choch_active"]
 
     return {

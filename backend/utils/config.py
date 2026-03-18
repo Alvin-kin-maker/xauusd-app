@@ -65,10 +65,10 @@ SESSIONS = {
 # BOX 1 — MARKET CONTEXT
 # ------------------------------------------------------------
 ATR_PERIOD = 14
-ATR_MIN_THRESHOLD = 0.5        # Minimum ATR to consider market active (in price)
-ATR_HIGH_THRESHOLD = 3.0       # ATR above this = high volatility
+ATR_MIN_THRESHOLD = 1.0        # Minimum ATR to consider market active — gold H1 normal low
+ATR_HIGH_THRESHOLD = 8.0       # ATR above this = high volatility (news spike territory)
 SPREAD_MAX_PIPS = 3.0          # Max allowed spread to take a trade
-DEAD_MARKET_ATR = 0.3          # Below this = dead market, no trading
+DEAD_MARKET_ATR = 0.5          # Below this = dead market, no trading
 
 # ------------------------------------------------------------
 # BOX 2 — TREND ENGINE

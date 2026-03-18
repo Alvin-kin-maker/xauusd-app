@@ -42,8 +42,8 @@ def load_news_cache():
             with open(NEWS_CACHE_FILE, "r") as f:
                 cache = json.load(f)
                 cached_at = datetime.fromisoformat(cache.get("cached_at", "2000-01-01"))
-                # News cache valid for 1 hour
-                if datetime.now() - cached_at < timedelta(hours=1):
+                # News cache valid for 15 minutes so passed events clear promptly
+                if datetime.now() - cached_at < timedelta(minutes=15):
                     return cache.get("events", [])
     except Exception:
         pass
@@ -140,7 +140,7 @@ def fetch_forex_factory_news():
 
             try:
                 event_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                # Convert to local time (naive)
+                # Store as UTC naive — compare against utcnow() everywhere
                 event_time = event_time.replace(tzinfo=None)
             except Exception:
                 continue
@@ -181,7 +181,7 @@ def check_news_block(events, buffer_before=None, buffer_after=None):
     if buffer_after is None:
         buffer_after = NEWS_BUFFER_MINUTES_AFTER
 
-    now        = datetime.now()
+    now        = datetime.utcnow()  # Events stored as UTC, must compare in UTC
     is_blocked = False
     block_reason   = None
     next_event     = None
@@ -312,13 +312,16 @@ def run(candle_store=None):
     # Check blackout
     result = check_news_block(events)
 
-    # Engine score
+    # Engine score — based on next upcoming event proximity
+    # is_blocked only affects should_trade, not the score display
     if result["is_blocked"]:
         score = 0
-    elif result["minutes_to_next"] and result["minutes_to_next"] <= 30:
-        # Next event within 30 min — reduce score
+    elif result["minutes_to_next"] is None:
+        # No upcoming events in next 4 hours — clear
+        score = 100
+    elif result["minutes_to_next"] <= 30:
         score = 50
-    elif result["minutes_to_next"] and result["minutes_to_next"] <= 60:
+    elif result["minutes_to_next"] <= 60:
         score = 75
     else:
         score = 100

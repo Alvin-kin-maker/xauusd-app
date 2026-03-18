@@ -101,12 +101,28 @@ class _MarketScreenState extends State<MarketScreen> {
 
   Widget _buildConfluenceCard() {
     final c = _market?['confluence'];
+    final t = _market?['trend'];
     if (c == null) return const SizedBox();
 
     final score     = (c['score'] ?? 0).toDouble();
-    final direction = c['direction'] ?? 'none';
-    final grade     = c['grade']     ?? 'NO_TRADE';
-    final engines   = c['engines']   as Map? ?? {};
+    final grade     = c['grade']  ?? 'NO_TRADE';
+    final engines   = c['engines'] as Map? ?? {};
+
+    // Use dominant HTF bias (D1 + H4 weighted) instead of confluence direction
+    // This is stable and reflects the actual market direction, not a noisy signal
+    final overallBias  = t?['overall_bias']  ?? 'neutral';
+    final d1Bias       = t?['timeframes']?['D1']?['bias'] ?? 'neutral';
+    final h4Bias       = t?['timeframes']?['H4']?['bias'] ?? 'neutral';
+
+    // Dominant = D1 if not neutral, else H4, else overall
+    String dominantBias = 'neutral';
+    if (d1Bias != 'neutral') {
+      dominantBias = d1Bias;
+    } else if (h4Bias != 'neutral') {
+      dominantBias = h4Bias;
+    } else {
+      dominantBias = overallBias;
+    }
 
     Color gradeColor = grade == 'STRONG' ? _bullish
         : grade == 'MODERATE' ? _gold
@@ -132,11 +148,13 @@ class _MarketScreenState extends State<MarketScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _biasColor(direction).withValues(alpha: 0.15),
+                    color: _biasColor(dominantBias).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(direction.toUpperCase(),
-                      style: TextStyle(color: _biasColor(direction), fontWeight: FontWeight.bold, fontSize: 13)),
+                  child: Text(
+                    dominantBias.toUpperCase(),
+                    style: TextStyle(color: _biasColor(dominantBias), fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(grade, style: TextStyle(color: gradeColor, fontWeight: FontWeight.bold, fontSize: 13)),
@@ -582,7 +600,7 @@ class _MarketScreenState extends State<MarketScreen> {
 
     final upcoming = n['upcoming'] as List? ?? [];
 
-    return _buildCard('NEWS FILTER', n['score'], [
+    return _buildCard('NEWS FILTER', null, [  // score hidden — status shows CLEAR/BLOCKED instead
       _infoRow('Status', n['blocked'] == true ? 'BLOCKED' : 'CLEAR',
           n['blocked'] == true ? _bearish : _bullish),
       if (n['next_event'] != null)

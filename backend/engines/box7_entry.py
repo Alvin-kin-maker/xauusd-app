@@ -233,10 +233,12 @@ def find_fvgs(df):
         if nxt["low"] > prev["high"]:
             gap_size = nxt["low"] - prev["high"]
             if gap_size >= FVG_MIN_SIZE:
-                # Check if filled
+                # Check if filled — 50% CE (consequent encroachment) is the fill threshold
+                # Price touching the midpoint = FVG filled, consistent with bearish FVG logic
                 filled = False
+                ce = prev["high"] + gap_size * 0.5  # midpoint of gap
                 for j in range(i + 2, len(df)):
-                    if df.iloc[j]["low"] <= prev["high"] + gap_size:
+                    if df.iloc[j]["low"] <= ce:
                         filled = True
                         break
 
@@ -475,21 +477,21 @@ def detect_double_top_bottom(df, lookback=50):
     highs  = recent["high"].values
     lows   = recent["low"].values
 
-    tolerance = 0.003  # 0.3% tolerance for "equal" tops/bottoms
+    tolerance = 0.001  # 0.1% tolerance — tighter to avoid noise on gold
 
     # Find swing highs for double top
     swing_highs = []
-    for i in range(2, len(highs) - 2):
-        if highs[i] >= highs[i-1] and highs[i] >= highs[i-2] and \
-           highs[i] >= highs[i+1] and highs[i] >= highs[i+2]:
+    for i in range(3, len(highs) - 3):
+        if highs[i] >= highs[i-1] and highs[i] >= highs[i-2] and highs[i] >= highs[i-3] and \
+           highs[i] >= highs[i+1] and highs[i] >= highs[i+2] and highs[i] >= highs[i+3]:
             swing_highs.append({"index": i, "price": highs[i]})
 
-    # Double top check
+    # Double top check — minimum 10 candles apart to be meaningful
     for i in range(len(swing_highs) - 1):
         sh1 = swing_highs[i]
         sh2 = swing_highs[i + 1]
         diff = abs(sh1["price"] - sh2["price"]) / sh1["price"]
-        if diff <= tolerance and sh2["index"] - sh1["index"] >= 5:
+        if diff <= tolerance and sh2["index"] - sh1["index"] >= 10:
             patterns.append({
                 "type":    "double_top",
                 "signal":  "bearish",
@@ -502,17 +504,17 @@ def detect_double_top_bottom(df, lookback=50):
 
     # Find swing lows for double bottom
     swing_lows = []
-    for i in range(2, len(lows) - 2):
-        if lows[i] <= lows[i-1] and lows[i] <= lows[i-2] and \
-           lows[i] <= lows[i+1] and lows[i] <= lows[i+2]:
+    for i in range(3, len(lows) - 3):
+        if lows[i] <= lows[i-1] and lows[i] <= lows[i-2] and lows[i] <= lows[i-3] and \
+           lows[i] <= lows[i+1] and lows[i] <= lows[i+2] and lows[i] <= lows[i+3]:
             swing_lows.append({"index": i, "price": lows[i]})
 
-    # Double bottom check
+    # Double bottom check — minimum 10 candles apart to be meaningful
     for i in range(len(swing_lows) - 1):
         sl1 = swing_lows[i]
         sl2 = swing_lows[i + 1]
         diff = abs(sl1["price"] - sl2["price"]) / sl1["price"]
-        if diff <= tolerance and sl2["index"] - sl1["index"] >= 5:
+        if diff <= tolerance and sl2["index"] - sl1["index"] >= 10:
             patterns.append({
                 "type":    "double_bottom",
                 "signal":  "bullish",

@@ -290,34 +290,24 @@ def get_signal():
         # --------------------------------------------------------
         b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12 = run_all_engines()
 
-        # Block if news
-        if b11["is_blocked"]:
-            return safe_json_response({
-                "should_trade":   False,
-                "blocked":        True,
-                "blocked_reason": b11["block_reason"],
-                "direction":      None,
-                "grade":          "NO_TRADE",
-                "score":          0,
-                "signal_summary": f"BLOCKED: {b11['block_reason']}",
-                "trade_status":   b10["trade_status"],
-                "health_score":   b12["health_score"],
-                "time":           datetime.now().isoformat(),
-            })
+        # News block — warning displays but never stops market data from showing
+        # should_trade is suppressed but all engine data still returns normally
+        news_is_blocked = b11["is_blocked"]
 
-        # New signal firing? Lock it
-        if b9["should_trade"] and b10["trade_status"] in ["SIGNAL", "ACTIVE"]:
+        # Only lock/fire signal if news is clear
+        if not news_is_blocked and b9["should_trade"] and b10["trade_status"] in ["SIGNAL", "ACTIVE"]:
             lock_signal(b9, b10, b8)
             log_signal(b9, b11)
 
         return safe_json_response({
-            "should_trade":    b9["should_trade"],
-            "blocked":         False,
+            "should_trade":    b9["should_trade"] and not news_is_blocked,
+            "blocked":         news_is_blocked,
+            "blocked_reason":  b11["block_reason"] if news_is_blocked else None,
             "score_frozen":    False,
             "direction":       b9["direction"],
-            "grade":           b9["grade"],
+            "grade":           "NO_TRADE" if news_is_blocked else b9["grade"],
             "score":           safe_float(b9["score"]),
-            "signal_summary":  b10["signal_summary"],
+            "signal_summary":  f"BLOCKED: {b11['block_reason']}" if news_is_blocked else b10["signal_summary"],
 
             "entry":           safe_float(b10["entry"]),
             "sl":              safe_float(b10["sl"]),
@@ -556,24 +546,29 @@ def get_price():
 def get_trade_state():
     state  = load_trade_state()
     frozen = get_frozen_signal()
+
+    # Only expose trade levels once signal tab has confirmed them via signal lock
+    # Prevents trade tab from showing a signal before the signal tab has fired it
+    signal_confirmed = frozen is not None
+
     return {
         "status":        state["status"],
-        "direction":     state.get("direction"),
-        "model":         state.get("model_name"),
-        "entry":         safe_float(state.get("entry_price")),
-        "sl":            safe_float(state.get("sl_price")),
-        "tp1":           safe_float(state.get("tp1_price")),
-        "tp2":           safe_float(state.get("tp2_price")),
-        "tp3":           safe_float(state.get("tp3_price")),
-        "lot_size":      safe_float(state.get("lot_size")),
+        "direction":     state.get("direction")             if signal_confirmed else None,
+        "model":         state.get("model_name")            if signal_confirmed else None,
+        "entry":         safe_float(state.get("entry_price")) if signal_confirmed else None,
+        "sl":            safe_float(state.get("sl_price"))    if signal_confirmed else None,
+        "tp1":           safe_float(state.get("tp1_price"))   if signal_confirmed else None,
+        "tp2":           safe_float(state.get("tp2_price"))   if signal_confirmed else None,
+        "tp3":           safe_float(state.get("tp3_price"))   if signal_confirmed else None,
+        "lot_size":      safe_float(state.get("lot_size"))    if signal_confirmed else None,
         "tp1_hit":       state.get("tp1_hit", False),
         "tp2_hit":       state.get("tp2_hit", False),
         "sl_at_be":      state.get("sl_moved_to_be", False),
         "m1_confirmed":  state.get("m1_confirmed", False),
-        "entry_time":    state.get("entry_time"),
+        "entry_time":    state.get("entry_time")            if signal_confirmed else None,
         "signal_time":   state.get("signal_time"),
         "state_message": state.get("state_message", ""),
-        "signal_locked": frozen is not None,
+        "signal_locked": signal_confirmed,
         "time":          datetime.now().isoformat(),
     }
 

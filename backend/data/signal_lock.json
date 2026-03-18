@@ -1,51 +1,15 @@
 {
-  "locked": true,
-  "direction": "sell",
-  "model_name": "double_top_bottom_trap",
-  "frozen_score": 70.5,
-  "frozen_grade": "STRONG",
-  "validated_count": 2,
-  "frozen_engines": {
-    "market_context": {
-      "raw": 87,
-      "contribution": 8.7
-    },
-    "trend": {
-      "raw": 23,
-      "contribution": 4.6
-    },
-    "liquidity": {
-      "raw": 100,
-      "contribution": 15.0
-    },
-    "levels": {
-      "raw": 85,
-      "contribution": 8.5
-    },
-    "momentum": {
-      "raw": 10,
-      "contribution": 1.0
-    },
-    "sentiment": {
-      "raw": 85,
-      "contribution": 8.5
-    },
-    "entry": {
-      "raw": 100,
-      "contribution": 10.0
-    },
-    "model": {
-      "raw": 95,
-      "contribution": 14.2
-    }
-  },
-  "signal_time": "2026-03-17T22:01:08.576155",
-  "entry": 4991.5,
-  "sl": 5029.35,
-  "tp1": 4953.65,
-  "tp2": 4915.8,
-  "tp3": 4877.95,
-  "sl_pips": 378.5,
-  "lot_size": 0.08,
-  "entry_zone": "Double Top Neckline"
+  "locked": false,
+  "direction": null,
+  "model_name": null,
+  "frozen_score": null,
+  "frozen_grade": null,
+  "frozen_engines": null,
+  "signal_time": null,
+  "entry": null,
+  "sl": null,
+  "tp1": null,
+  "tp2": null,
+  "tp3": null,
+  "lot_size": null
 }

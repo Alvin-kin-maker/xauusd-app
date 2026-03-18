@@ -151,10 +151,16 @@ def calculate_atr(df, period=None):
     df["tr"]  = df[["tr1", "tr2", "tr3"]].max(axis=1)
 
     # Wilder's smoothing (same as RMA in Pine Script)
+    # Reset index to ensure positional indexing works correctly
+    df = df.reset_index(drop=True)
     atr_values = [None] * len(df)
 
     # Seed with simple average of first `period` TR values
-    first_valid = df["tr"].dropna().index[0]
+    # Use positional index (iloc) not label index to avoid pandas index bug
+    tr_series = df["tr"].dropna()
+    if len(tr_series) < period:
+        return None
+    first_valid = tr_series.index[0]  # positional after reset_index
     seed_end = first_valid + period
 
     if seed_end >= len(df):
