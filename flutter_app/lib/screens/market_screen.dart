@@ -466,7 +466,7 @@ class _MarketScreenState extends State<MarketScreen> {
         const Padding(padding: EdgeInsets.symmetric(vertical: 4),
             child: Divider(color: Colors.white12, height: 1)),
       ],
-      Text('ALL LEVELS', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
+      Text('ALL LEVELS (M15)', style: TextStyle(color: Colors.white24, fontSize: 10, letterSpacing: 1)),
       const SizedBox(height: 6),
       ...allFibs.map((f) => Padding(
         padding: const EdgeInsets.only(bottom: 3),
@@ -476,6 +476,40 @@ class _MarketScreenState extends State<MarketScreen> {
           (f['is_golden'] == true) ? _gold : Colors.white38,
         ),
       )),
+      // H4 Fibonacci — institutional level zones
+      if ((e['golden_fibs_h4'] as List? ?? []).isNotEmpty) ...[
+        const Padding(padding: EdgeInsets.symmetric(vertical: 4),
+            child: Divider(color: Colors.white12, height: 1)),
+        Text('H4 GOLDEN ZONE (Institutional)',
+            style: TextStyle(color: _gold, fontSize: 10, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        ...(e['golden_fibs_h4'] as List).map((f) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(children: [
+            Container(width: 8, height: 8,
+                decoration: const BoxDecoration(color: Color(0xFFFFD700), shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Text(f['label']?.toString() ?? '',
+                style: TextStyle(color: _gold, fontSize: 12, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            Text('${f['level'] ?? '—'}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()])),
+          ]),
+        )),
+        if (e['ote_h4'] != null && e['ote_h4']['in_ote'] == true)
+          Container(
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _gold.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: _gold.withValues(alpha: 0.4)),
+            ),
+            child: Text('H4 OTE ACTIVE — ${(e['ote_h4']['ote_direction'] ?? '').toUpperCase()}',
+                style: TextStyle(color: _gold, fontSize: 11, fontWeight: FontWeight.w600)),
+          ),
+      ],
     ]);
   }
 
@@ -544,7 +578,7 @@ class _MarketScreenState extends State<MarketScreen> {
         ]),
       ),
             _infoRow('Active', m['active_model']?.toString().replaceAll('_', ' ') ?? 'None', _gold),
-      _infoRow('Validated', '${m['validated_count']}/10', Colors.white70),
+      _infoRow('Validated', '${m['validated_count']}/13', Colors.white70),
       const SizedBox(height: 8),
       ...allScores.entries.map((e) {
         final score = (e.value ?? 0).toDouble();

@@ -65,10 +65,10 @@ SESSIONS = {
 # BOX 1 — MARKET CONTEXT
 # ------------------------------------------------------------
 ATR_PERIOD = 14
-ATR_MIN_THRESHOLD = 1.0        # Minimum ATR to consider market active — gold H1 normal low
-ATR_HIGH_THRESHOLD = 8.0       # ATR above this = high volatility (news spike territory)
+ATR_MIN_THRESHOLD = 0.5        # Minimum ATR to consider market active (in price)
+ATR_HIGH_THRESHOLD = 3.0       # ATR above this = high volatility
 SPREAD_MAX_PIPS = 3.0          # Max allowed spread to take a trade
-DEAD_MARKET_ATR = 0.5          # Below this = dead market, no trading
+DEAD_MARKET_ATR = 0.3          # Below this = dead market, no trading
 
 # ------------------------------------------------------------
 # BOX 2 — TREND ENGINE
@@ -92,7 +92,7 @@ PDH_PDL_LOOKBACK = 1           # Days back for previous day high/low
 PSYCHOLOGICAL_ROUND_NUMBER = 50    # Every 50 pips = psychological level for gold
 VWAP_PERIOD = "D1"                 # VWAP reset period
 PIVOT_TYPE = "standard"            # standard, fibonacci, camarilla
-KEY_LEVEL_PROXIMITY = 10           # Within 10 pips = "at a level"
+KEY_LEVEL_PROXIMITY = 50           # Within 50 pips = "at a level" (gold ATR ~40 pips)
 
 # ------------------------------------------------------------
 # BOX 5 — MOMENTUM ENGINE

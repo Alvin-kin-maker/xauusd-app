@@ -113,13 +113,13 @@ def score_b2(b2, direction):
     notes           = []
 
     bias_map = {
-        "MN":  (b2["timeframes"]["MN"]["bias"],  3),
-        "W1":  (b2["timeframes"]["W1"]["bias"],  3),
-        "D1":  (b2["timeframes"]["D1"]["bias"],  2),
-        "H4":  (b2["timeframes"]["H4"]["bias"],  2),
-        "H1":  (b2["timeframes"]["H1"]["bias"],  1),
-        "M15": (b2["timeframes"]["M15"]["bias"], 1),
-        "M5":  (b2["timeframes"]["M5"]["bias"],  1),
+        "MN":  (b2["timeframes"]["MN"]["bias"],  1),  # macro context only
+        "W1":  (b2["timeframes"]["W1"]["bias"],  2),  # weekly direction
+        "D1":  (b2["timeframes"]["D1"]["bias"],  3),  # primary trend
+        "H4":  (b2["timeframes"]["H4"]["bias"],  3),  # execution trend
+        "H1":  (b2["timeframes"]["H1"]["bias"],  2),  # entry trend
+        "M15": (b2["timeframes"]["M15"]["bias"], 2),  # entry confirmation
+        "M5":  (b2["timeframes"]["M5"]["bias"],  1),  # noise filter
     }
 
     dir_bias = "bullish" if direction == "buy" else "bearish"
@@ -162,7 +162,28 @@ def score_b3(b3, direction):
     if b3["sweep_just_happened"]:
         notes.append("Sweep just happened ✓")
 
-    bonus = 10 if sweep_ok else 0
+    # Also give partial credit if sweep direction matches trade direction
+    # A mature setup after a sweep still deserves liquidity credit
+    # Use sweep_direction field directly — "bearish" or "bullish"
+    sweep_direction = b3.get("sweep_direction", "")
+    sweep_direction_ok = False
+    if direction == "sell" and sweep_direction == "bearish":
+        sweep_direction_ok = True
+        notes.append("Bearish sweep context present ✓")
+    elif direction == "buy" and sweep_direction == "bullish":
+        sweep_direction_ok = True
+        notes.append("Bullish sweep context present ✓")
+
+    # Score: fresh sweep in direction = full bonus, mature sweep in direction = partial
+    if sweep_ok and b3["sweep_just_happened"]:
+        bonus = 20
+    elif sweep_ok:
+        bonus = 15
+    elif sweep_direction_ok and b3["total_sweeps"] > 0:
+        bonus = 10
+    else:
+        bonus = 0
+
     final = min(s + bonus, 100)
 
     return {
@@ -255,32 +276,76 @@ def score_b6(b6, direction):
     }
 
 
-def score_b7(b7, direction):
+def score_b7(b7, direction, b13=None, is_breakout=False):
     """Entry — is there a valid entry zone?"""
-    s     = b7["engine_score"]
     notes = []
-
     entry_ok = False
+
+    # Check if price is AT a zone right now
+    at_zone = False
     if direction == "buy":
         if b7["at_bull_ob"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bullish OB ✓")
         if b7["at_bull_fvg"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bullish FVG ✓")
         if b7["at_bull_breaker"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bullish breaker ✓")
     elif direction == "sell":
         if b7["at_bear_ob"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bearish OB ✓")
         if b7["at_bear_fvg"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bearish FVG ✓")
         if b7["at_bear_breaker"]:
             entry_ok = True
+            at_zone  = True
             notes.append("At bearish breaker ✓")
+
+    # For breakout models — entry is the breakout candle itself, not an OB/FVG
+    # Give full entry score if b13 confirms breakout in same direction
+    if is_breakout and b13:
+        best_bo = b13.get("best_breakout")
+        if best_bo and best_bo.get("direction") == direction and best_bo.get("validated"):
+            s = min(best_bo.get("score", 80), 100)
+            notes.append(f"Breakout entry confirmed: {best_bo.get('type','breakout')} ✓")
+            return {
+                "raw":          s,
+                "weight":       CONFLUENCE_WEIGHTS["entry"],
+                "contribution": round(s * CONFLUENCE_WEIGHTS["entry"] / 100, 1),
+                "notes":        notes,
+                "entry_ok":     True,
+                "at_zone":      True,
+                "zones_exist":  True,
+                "breakout_entry": True,
+            }
+
+    # Even if price isn't AT the zone yet, give credit for valid zones existing
+    # This allows score to reach 70+ so a limit signal can fire
+    zones_exist = False
+    if direction == "buy":
+        zones_exist = b7["bull_ob_count"] > 0 or b7["bull_fvg_count"] > 0
+    elif direction == "sell":
+        zones_exist = b7["bear_ob_count"] > 0 or b7["bear_fvg_count"] > 0
+
+    # Score: at zone = full engine score, zones exist nearby = 50, nothing = 0
+    if at_zone:
+        s = b7["engine_score"]
+        notes.append("Price at entry zone ✓")
+    elif zones_exist:
+        s = 50  # Zones exist, price not there yet — partial credit
+        notes.append(f"Entry zones available — waiting for price ⏳")
+    else:
+        s = 0
+        notes.append("No entry zones in direction ✗")
 
     for cp in b7["candle_patterns"]:
         if (cp["signal"] == "bullish" and direction == "buy") or \
@@ -296,6 +361,8 @@ def score_b7(b7, direction):
         "contribution": round(s * CONFLUENCE_WEIGHTS["entry"] / 100, 1),
         "notes":        notes,
         "entry_ok":     entry_ok,
+        "at_zone":      at_zone,
+        "zones_exist":  zones_exist,
     }
 
 
@@ -391,7 +458,49 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8):
     if all(b == "neutral" for b in htf_biases):
         kills.append("KILL: All HTF neutral — no directional bias")
 
+    # 9. RSI extreme counter-direction — selling into oversold, buying into overbought
+    # This is not a hard kill but reduces model score threshold
+    # Hard kill only when RSI is at absolute extreme (< 20 or > 80)
+    rsi_m15 = b5.get("rsi_m15") or 50
+    direction = resolve_direction_simple(b2, b3, b8)
+    if direction == "sell" and rsi_m15 < 20:
+        kills.append(f"KILL: RSI {round(rsi_m15,1)} extreme oversold — no sells at exhaustion")
+    elif direction == "buy" and rsi_m15 > 80:
+        kills.append(f"KILL: RSI {round(rsi_m15,1)} extreme overbought — no buys at exhaustion")
+
+    # 10. Move exhaustion — price moved > 4x ATR without retracement
+    # Selling after 400+ pip drop = exhaustion, not continuation
+    atr = b1.get("atr") or 2.0
+    if atr > 0:
+        m15_data = b2.get("timeframes", {}).get("M15", {})
+        last_sh = m15_data.get("last_sh")
+        last_sl = m15_data.get("last_sl")
+        price_info = b4.get("current_price")
+        if price_info and last_sh and last_sl:
+            sh_price = float(last_sh["price"]) if isinstance(last_sh, dict) else float(last_sh)
+            sl_price = float(last_sl["price"]) if isinstance(last_sl, dict) else float(last_sl)
+            current = float(price_info)
+            # For sells: how far has price dropped from last swing high
+            drop_from_high = sh_price - current
+            rise_from_low  = current - sl_price
+            if direction == "sell" and drop_from_high > atr * 4:
+                kills.append(f"KILL: Move exhaustion — price dropped {round(drop_from_high*10,0):.0f} pips ({round(drop_from_high/atr,1)}x ATR) — wait for retracement first")
+            elif direction == "buy" and rise_from_low > atr * 4:
+                kills.append(f"KILL: Move exhaustion — price rose {round(rise_from_low*10,0):.0f} pips ({round(rise_from_low/atr,1)}x ATR) — wait for retracement first")
+
     return kills
+
+
+def resolve_direction_simple(b2, b3, b8):
+    """Simple direction resolver for kill switch context."""
+    if b8.get("best_model_name"):
+        sweep_dir = b3.get("sweep_direction")
+        if sweep_dir == "bearish": return "sell"
+        if sweep_dir == "bullish": return "buy"
+    d1 = b2["timeframes"]["D1"]["bias"]
+    if d1 == "bearish": return "sell"
+    if d1 == "bullish": return "buy"
+    return None
 
 
 # ------------------------------------------------------------
@@ -432,7 +541,7 @@ def build_summary(direction, score, grade, scored_engines, kill_switches, b8):
 # MAIN ENGINE FUNCTION
 # ------------------------------------------------------------
 
-def run(b1, b2, b3, b4, b5, b6, b7, b8):
+def run(b1, b2, b3, b4, b5, b6, b7, b8, b13=None):
     """
     Aggregate all engine outputs into final confluence score.
 
@@ -449,6 +558,8 @@ def run(b1, b2, b3, b4, b5, b6, b7, b8):
     kill_switches = check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8)
 
     # Score each engine
+    # For breakout models, entry scoring uses b13 data not zone presence
+    is_breakout_model = b8.get("best_model_name") in ["momentum_breakout", "structural_breakout"]
     scored_engines = {
         "market_context": score_b1(b1),
         "trend":          score_b2(b2, direction),
@@ -456,7 +567,7 @@ def run(b1, b2, b3, b4, b5, b6, b7, b8):
         "levels":         score_b4(b4),
         "momentum":       score_b5(b5, direction),
         "sentiment":      score_b6(b6, direction),
-        "entry":          score_b7(b7, direction),
+        "entry":          score_b7(b7, direction, b13=b13, is_breakout=is_breakout_model),
         "model":          score_b8(b8),
     }
 

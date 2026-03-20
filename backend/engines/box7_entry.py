@@ -367,82 +367,109 @@ def calculate_fibonacci(swing_high, swing_low, direction="bullish"):
     return levels
 
 
-def get_recent_fibonacci(df):
+def get_recent_fibonacci(df, b2_swing_high=None, b2_swing_low=None):
     """
-    Auto-detect recent swing and calculate fibs.
-    Also detects OTE zone (61.8% to 79% retracement).
+    Calculate fibs anchored to confirmed B2 swing points (BOS/CHOCH).
+    If B2 swings provided, use them — these are institutional swing points.
+    Falls back to rolling window only if B2 data unavailable.
     """
     if df is None or len(df) < 20:
         return [], "unknown"
 
-    lookback = min(50, len(df))
-    recent   = df.iloc[-lookback:]
+    swing_high = None
+    swing_low  = None
 
-    swing_high = float(recent["high"].max())
-    swing_low  = float(recent["low"].min())
-
-    high_idx = recent["high"].idxmax()
-    low_idx  = recent["low"].idxmin()
-
-    if high_idx > low_idx:
-        direction = "bullish"
+    # Priority 1: confirmed B2 swing points (BOS/CHOCH anchors) — most accurate
+    if b2_swing_high is not None and b2_swing_low is not None:
+        swing_high = float(b2_swing_high)
+        swing_low  = float(b2_swing_low)
     else:
-        direction = "bearish"
+        # Priority 2: use recent significant highs/lows from candle data
+        # Find actual swing high/low using pivot detection instead of raw max/min
+        # This avoids anchoring to random wicks on rolling window
+        lookback = min(50, len(df))
+        recent   = df.iloc[-lookback:]
+        # Find the most significant high and low using 3-bar pivot logic
+        highs = recent["high"].values
+        lows  = recent["low"].values
+        sig_highs = []
+        sig_lows  = []
+        for i in range(2, len(highs) - 2):
+            if highs[i] > highs[i-1] and highs[i] > highs[i-2] and                highs[i] > highs[i+1] and highs[i] > highs[i+2]:
+                sig_highs.append(highs[i])
+            if lows[i] < lows[i-1] and lows[i] < lows[i-2] and                lows[i] < lows[i+1] and lows[i] < lows[i+2]:
+                sig_lows.append(lows[i])
+        if sig_highs and sig_lows:
+            swing_high = float(max(sig_highs))
+            swing_low  = float(min(sig_lows))
+        else:
+            # Last resort: rolling window max/min
+            swing_high = float(recent["high"].max())
+            swing_low  = float(recent["low"].min())
+
+    if swing_high is None or swing_low is None or swing_high <= swing_low:
+        return [], "unknown"
+
+    current = float(df.iloc[-1]["close"])
+    direction = "bullish" if current > (swing_high + swing_low) / 2 else "bearish"
 
     fibs = calculate_fibonacci(swing_high, swing_low, direction)
     return fibs, direction
 
 
-def detect_ote_zone(df):
+def detect_ote_zone(df, b2_swing_high=None, b2_swing_low=None):
     """
-    OTE = Optimal Trade Entry zone (ICT concept).
-    The 'sweet spot' for entries: 61.8% to 79% retracement.
-
-    For a BUY setup:
-        Price retraced 61.8–79% of the last bullish leg
-        = below the 61.8% fib level in a discount zone
-
-    For a SELL setup:
-        Price retraced 61.8–79% of the last bearish leg
-        = above the 61.8% fib level in a premium zone
-
-    Returns dict with OTE zone boundaries and whether price is in OTE.
+    OTE = Optimal Trade Entry (61.8% to 79% retracement).
+    Anchored to confirmed B2 BOS/CHOCH swing points when available.
+    These are the real institutional swings the market respects.
     """
     if df is None or len(df) < 20:
         return {"in_ote": False, "ote_direction": None}
 
-    lookback = min(50, len(df))
-    recent   = df.iloc[-lookback:]
-    current  = float(df.iloc[-1]["close"])
+    current = float(df.iloc[-1]["close"])
 
-    swing_high = float(recent["high"].max())
-    swing_low  = float(recent["low"].min())
-    rng        = swing_high - swing_low
+    # Use B2 confirmed swings if available
+    if b2_swing_high is not None and b2_swing_low is not None:
+        swing_high = float(b2_swing_high)
+        swing_low  = float(b2_swing_low)
+    else:
+        # Use pivot-detected swings not raw max/min
+        lookback = min(50, len(df))
+        recent   = df.iloc[-lookback:]
+        highs = recent["high"].values
+        lows  = recent["low"].values
+        sig_highs = []
+        sig_lows  = []
+        for i in range(2, len(highs) - 2):
+            if highs[i] > highs[i-1] and highs[i] > highs[i-2] and                highs[i] > highs[i+1] and highs[i] > highs[i+2]:
+                sig_highs.append(highs[i])
+            if lows[i] < lows[i-1] and lows[i] < lows[i-2] and                lows[i] < lows[i+1] and lows[i] < lows[i+2]:
+                sig_lows.append(lows[i])
+        if sig_highs and sig_lows:
+            swing_high = float(max(sig_highs))
+            swing_low  = float(min(sig_lows))
+        else:
+            swing_high = float(recent["high"].max())
+            swing_low  = float(recent["low"].min())
 
-    if rng < 0.5:  # too small
+    rng = swing_high - swing_low
+    if rng < 0.5:
         return {"in_ote": False, "ote_direction": None}
 
-    high_idx = recent["high"].idxmax()
-    low_idx  = recent["low"].idxmin()
+    # Buy OTE — bullish retracement levels
+    ote_618 = round(swing_high - rng * 0.618, 2)
+    ote_705 = round(swing_high - rng * 0.705, 2)  # sweet spot
+    ote_79  = round(swing_high - rng * 0.79,  2)
 
-    # OTE levels
-    ote_618 = round(swing_high - rng * 0.618, 2)  # 61.8% retracement
-    ote_705 = round(swing_high - rng * 0.705, 2)  # 70.5% = sweet spot
-    ote_79  = round(swing_high - rng * 0.79,  2)  # 79% = last line
-
-    in_buy_ote  = ote_79 <= current <= ote_618  # price in discount OTE
-    in_sell_ote = False
-
-    # For sell OTE (upward retracement in bearish move)
+    # Sell OTE — bearish retracement levels
     sell_ote_618 = round(swing_low + rng * 0.618, 2)
+    sell_ote_705 = round(swing_low + rng * 0.705, 2)
     sell_ote_79  = round(swing_low + rng * 0.79,  2)
-    in_sell_ote  = sell_ote_618 <= current <= sell_ote_79
 
-    direction = None
-    if in_buy_ote:
-        direction = "buy"
-    elif in_sell_ote:
-        direction = "sell"
+    in_buy_ote  = ote_79  <= current <= ote_618
+    in_sell_ote = sell_ote_618 <= current <= sell_ote_79
+
+    direction = "buy" if in_buy_ote else ("sell" if in_sell_ote else None)
 
     return {
         "in_ote":           in_buy_ote or in_sell_ote,
@@ -450,9 +477,10 @@ def detect_ote_zone(df):
         "in_sell_ote":      in_sell_ote,
         "ote_direction":    direction,
         "ote_618":          ote_618,
-        "ote_705":          ote_705,    # sweet spot
+        "ote_705":          ote_705,
         "ote_79":           ote_79,
         "sell_ote_618":     sell_ote_618,
+        "sell_ote_705":     sell_ote_705,
         "sell_ote_79":      sell_ote_79,
         "swing_high":       round(swing_high, 2),
         "swing_low":        round(swing_low, 2),
@@ -633,7 +661,7 @@ def price_at_zone(current_price, zones, proximity=5.0):
 # MAIN ENGINE FUNCTION
 # ------------------------------------------------------------
 
-def run(candle_store):
+def run(candle_store, b2=None):
     """
     Run full Entry Engine.
     Detects all entry zones across M15 and H1.
@@ -671,8 +699,46 @@ def run(candle_store):
     )
 
     # --- Fibonacci ---
-    fibs_m15, fib_direction = get_recent_fibonacci(df_m15)
+    # Extract confirmed swing anchors from B2 (BOS/CHOCH points)
+    # These give accurate fibs vs arbitrary rolling window
+    b2_sh_m15 = b2_sh_h4 = b2_sl_m15 = b2_sl_h4 = None
+    if b2:
+        m15_data = b2.get("timeframes", {}).get("M15", {})
+        h4_data  = b2.get("timeframes", {}).get("H4",  {})
+        last_sh_m15 = m15_data.get("last_sh")
+        last_sl_m15 = m15_data.get("last_sl")
+        last_sh_h4  = h4_data.get("last_sh")
+        last_sl_h4  = h4_data.get("last_sl")
+        if last_sh_m15: b2_sh_m15 = float(last_sh_m15["price"]) if isinstance(last_sh_m15, dict) else float(last_sh_m15)
+        if last_sl_m15: b2_sl_m15 = float(last_sl_m15["price"]) if isinstance(last_sl_m15, dict) else float(last_sl_m15)
+        if last_sh_h4:  b2_sh_h4  = float(last_sh_h4["price"])  if isinstance(last_sh_h4,  dict) else float(last_sh_h4)
+        if last_sl_h4:  b2_sl_h4  = float(last_sl_h4["price"])  if isinstance(last_sl_h4,  dict) else float(last_sl_h4)
+
+    df_h4 = candle_store.get_closed("H4")
+
+    # M15 fibs — use B2 confirmed swings, fall back to PDH/PDL (never rolling window)
+    # PDH/PDL are always available and more meaningful than arbitrary rolling max/min
+    if b2_sh_m15 is None or b2_sl_m15 is None:
+        # Try to get PDH/PDL from the dataframe as better anchors than rolling window
+        if df_m15 is not None and len(df_m15) >= 2:
+            # Use recent significant swing: last 20 candles high/low
+            # Better than 50-candle rolling but not as good as confirmed BOS swing
+            recent_20 = df_m15.iloc[-20:]
+            b2_sh_m15 = b2_sh_m15 or float(recent_20["high"].max())
+            b2_sl_m15 = b2_sl_m15 or float(recent_20["low"].min())
+
+    fibs_m15, fib_direction = get_recent_fibonacci(df_m15, b2_sh_m15, b2_sl_m15)
     golden_fibs = [f for f in fibs_m15 if f["is_golden"]]
+
+    # H4 fibs — same approach
+    if b2_sh_h4 is None or b2_sl_h4 is None:
+        if df_h4 is not None and len(df_h4) >= 2:
+            recent_h4_20 = df_h4.iloc[-20:]
+            b2_sh_h4 = b2_sh_h4 or float(recent_h4_20["high"].max())
+            b2_sl_h4 = b2_sl_h4 or float(recent_h4_20["low"].min())
+
+    fibs_h4, fib_direction_h4 = get_recent_fibonacci(df_h4, b2_sh_h4, b2_sl_h4)
+    golden_fibs_h4 = [f for f in fibs_h4 if f["is_golden"]]
 
     # --- Patterns ---
     patterns_m15 = detect_double_top_bottom(df_m15)
@@ -681,9 +747,10 @@ def run(candle_store):
 
     all_patterns = patterns_m15 + patterns_m5
 
-    # --- OTE Zone detection ---
-    ote_m15 = detect_ote_zone(df_m15)
-    ote_h1  = detect_ote_zone(df_h1)
+    # --- OTE Zone detection — anchored to B2 swings ---
+    ote_m15 = detect_ote_zone(df_m15, b2_sh_m15, b2_sl_m15)
+    ote_h1  = detect_ote_zone(df_h1,  b2_sh_m15, b2_sl_m15)  # H1 uses M15 anchors (more precise)
+    ote_h4  = detect_ote_zone(df_h4,  b2_sh_h4,  b2_sl_h4)
     in_ote  = ote_m15["in_ote"] or ote_h1["in_ote"]
     ote_direction = ote_m15["ote_direction"] or ote_h1["ote_direction"]
 
@@ -757,6 +824,10 @@ def run(candle_store):
         # Fibonacci
         "fibs":              fibs_m15,
         "golden_fibs":       golden_fibs,
+        "fibs_h4":           fibs_h4,
+        "golden_fibs_h4":    golden_fibs_h4,
+        "fib_direction_h4":  fib_direction_h4,
+        "ote_h4":            ote_h4,
         "fib_direction":     fib_direction,
 
         # Patterns

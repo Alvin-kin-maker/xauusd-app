@@ -357,19 +357,26 @@ def model_ob_fvg_stack(b1, b2, b3, b4, b5, b6, b7):
         score += 5
         reasons.append("Declining volume approaching zone ✓")
 
-    # Box 7: OB AND FVG both present (the stack)
-    has_ob  = b7["bull_ob_count"] > 0 or b7["bear_ob_count"] > 0
-    has_fvg = b7["bull_fvg_count"] > 0 or b7["bear_fvg_count"] > 0
-    is_stack = has_ob and has_fvg
+    # Box 7: OB AND FVG both present AND price is near/at the stack
+    # Just having OBs/FVGs exist anywhere is not enough — price must be near them
+    has_ob       = b7["bull_ob_count"] > 0 or b7["bear_ob_count"] > 0
+    has_fvg      = b7["bull_fvg_count"] > 0 or b7["bear_fvg_count"] > 0
+    price_at_ob  = b7["at_bull_ob"] or b7["at_bear_ob"]
+    price_at_fvg = b7["at_bull_fvg"] or b7["at_bear_fvg"]
+    is_stack     = has_ob and has_fvg
+    price_near_stack = price_at_ob or price_at_fvg  # price must be approaching/at zone
 
-    if is_stack:
+    if is_stack and price_near_stack:
         score += 30
-        reasons.append("OB + FVG STACK CONFIRMED ✓✓")
+        reasons.append("OB + FVG STACK — price at zone ✓✓")
+    elif is_stack and not price_near_stack:
+        score += 10  # Stack exists but price not there yet — reduced credit
+        reasons.append("OB + FVG STACK exists — waiting for price ⏳")
     elif has_ob:
-        score += 15
+        score += 10
         reasons.append("OB present (no FVG stack) ✓")
     elif has_fvg:
-        score += 10
+        score += 8
         reasons.append("FVG present (no OB stack) ✓")
     else:
         reasons.append("No OB or FVG found ✗")
@@ -377,6 +384,7 @@ def model_ob_fvg_stack(b1, b2, b3, b4, b5, b6, b7):
     validated = (
         good_session and
         is_stack and
+        price_near_stack and  # ← now required: price must be at/near the zone
         aligned and
         score >= 65
     )
@@ -537,13 +545,23 @@ def model_htf_level_reaction(b1, b2, b3, b4, b5, b6, b7):
         cp = b7["candle_patterns"][0]
         reasons.append(f"Confirmation candle: {cp['type']} ✓")
 
+    # Direction must align with HTF bias — no counter-trend HTF reactions
+    # D1 or H4 must agree with the direction B9 will resolve
+    # We check D1 bias here as a hard gate
+    d1_bias_direction = "sell" if d1_bias == "bearish" else ("buy" if d1_bias == "bullish" else None)
+    h4_bias_direction = "sell" if h4_bias == "bearish" else ("buy" if h4_bias == "bullish" else None)
+
+    # Also require a confirmation candle (rejection) at the level
+    has_confirmation = len(b7.get("candle_patterns", [])) > 0 or b7.get("at_bull_ob") or b7.get("at_bear_ob")
+
     validated = (
         good_session and
         b4["at_key_level"] and
+        has_confirmation and  # must have rejection candle at level
         score >= 65
     )
 
-    missed_rule = "Reaction candle 20+ pips from level → void. Second touch entry only."
+    missed_rule = "Need: at HTF level + rejection candle + score≥65. No counter-trend."
 
     return model_result(name, validated, min(score, 100), reasons,
                        entry_type="15M or 5M confirmation candle close", missed_rule=missed_rule)
@@ -1079,13 +1097,122 @@ def model_silver_bullet(b1, b2, b3, b4, b5, b6, b7):
         missed_rule="Need: time window + liquidity sweep + FVG + score ≥ 65"
     )
 
+
+# ------------------------------------------------------------
+# MODEL 12 — STRUCTURAL BREAKOUT
+# ------------------------------------------------------------
+
+def model_structural_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
+    """
+    Concept: Fresh BOS with volume confirmation, enter on retest.
+    Uses B13 structural breakout detection.
+    """
+    name    = "structural_breakout"
+    reasons = []
+    score   = 0
+
+    sb = b13.get("structural_breakout")
+    if sb is None:
+        return model_result(name, False, 0,
+            ["No structural breakout detected ✗"],
+            entry_type="Retest of broken structure level",
+            missed_rule="Need: fresh BOS + volume + price near retest zone")
+
+    score   = sb["score"]
+    reasons = sb["reasons"]
+
+    # Extra: HTF trend alignment gives bonus
+    direction = sb["direction"]
+    h4_bias   = b2.get("h4_bias", "neutral")
+    htf_dir   = "bullish" if direction == "buy" else "bearish"
+    if h4_bias == htf_dir:
+        score = min(score + 10, 100)
+        reasons.append(f"H4 aligned with breakout ✓")
+
+    # Extra guard: check move exhaustion
+    # If price already moved > 3x ATR from last swing, reduce score heavily
+    # Uses b4 current_price — no MT5 dependency inside model function
+    atr = float(b1.get("atr") or 2.0)
+    h4_sh = b2.get("timeframes", {}).get("H4", {}).get("last_sh")
+    h4_sl = b2.get("timeframes", {}).get("H4", {}).get("last_sl")
+    direction = sb.get("direction")
+    current_price = b4.get("current_price")
+    if h4_sh and h4_sl and direction and atr > 0 and current_price:
+        cp   = float(current_price)
+        sh_p = float(h4_sh["price"]) if isinstance(h4_sh, dict) else float(h4_sh)
+        sl_p = float(h4_sl["price"]) if isinstance(h4_sl, dict) else float(h4_sl)
+        move = (sh_p - cp) if direction == "sell" else (cp - sl_p)
+        if move > atr * 3:
+            score = max(0, score - 25)
+            reasons.append(f"Move exhaustion: {round(move/atr,1)}x ATR already moved ✗")
+
+    validated = sb["validated"] and score >= 60
+
+    return model_result(
+        name, validated, min(score, 100), reasons,
+        entry_type=sb.get("entry_type", "Retest of broken structure"),
+        missed_rule="Need: BOS active + volume spike + price within 30 pips of retest + no exhaustion"
+    )
+
+
+# ------------------------------------------------------------
+# MODEL 13 — MOMENTUM BREAKOUT (STRAIGHT SHOOTER)
+# ------------------------------------------------------------
+
+def model_momentum_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
+    """
+    Concept: Strong displacement candle breaks key level with volume.
+    No retest expected — straight shooter entry.
+    Uses B13 momentum breakout detection.
+    """
+    name    = "momentum_breakout"
+    reasons = []
+    score   = 0
+
+    mb = b13.get("momentum_breakout")
+    if mb is None:
+        return model_result(name, False, 0,
+            ["No momentum breakout detected ✗"],
+            entry_type="Momentum breakout entry",
+            missed_rule="Need: body>65% + volume spike + broke key level + score≥55")
+
+    score   = mb["score"]
+    reasons = mb["reasons"]
+
+    # ATR must be active (not dead market)
+    atr_ok = b1.get("volatility_regime") not in ["dead", "low"]
+    if not atr_ok:
+        return model_result(name, False, 0,
+            ["Market too quiet for momentum breakout ✗"],
+            entry_type="Momentum breakout entry",
+            missed_rule="ATR must be normal or high")
+
+    # Session must be London or NY — momentum breakouts in Asian = fakeouts
+    session_ok = b1.get("primary_session") in ["london", "new_york", "overlap"]
+    if not session_ok:
+        reasons.append(f"Session {b1.get('primary_session')} not ideal for momentum ✗")
+        score = max(0, score - 20)
+    else:
+        reasons.append(f"Session {b1.get('primary_session')} ✓")
+
+    validated = mb["validated"] and session_ok and score >= 55
+
+    return model_result(
+        name, validated, min(score, 100), reasons,
+        entry_type=mb.get("entry_type", "Momentum breakout"),
+        missed_rule="Need: body>65% + volume spike + broke key level + London/NY session"
+    )
+
+
 # ------------------------------------------------------------
 # MODEL PRIORITY ORDER
 # ------------------------------------------------------------
 
 MODEL_PRIORITY = [
     "silver_bullet",          # ← highest priority: time-window precision
+    "momentum_breakout",      # ← straight shooter: urgent, no retest
     "london_sweep_reverse",
+    "structural_breakout",    # ← BOS retest entry
     "htf_level_reaction",
     "liquidity_grab_bos",
     "ob_fvg_stack",
@@ -1102,20 +1229,26 @@ MODEL_PRIORITY = [
 # MAIN ENGINE FUNCTION
 # ------------------------------------------------------------
 
-def run(b1, b2, b3, b4, b5, b6, b7):
+def run(b1, b2, b3, b4, b5, b6, b7, b13=None):
     """
     Run all 10 models and return validated ones.
 
     Args:
         b1-b7: outputs from box engines 1-7
+        b13:   breakout engine output (optional)
 
     Returns:
         dict with all model results + best model
     """
     # Run all models
+    # B13 defaults to empty dict if not provided (backward compatible)
+    _b13 = b13 if b13 is not None else {}
+
     results = {
         "silver_bullet":           model_silver_bullet(b1, b2, b3, b4, b5, b6, b7),
+        "momentum_breakout":       model_momentum_breakout(b1, b2, b3, b4, b5, b6, b7, _b13),
         "london_sweep_reverse":    model_london_sweep_reverse(b1, b2, b3, b4, b5, b6, b7),
+        "structural_breakout":     model_structural_breakout(b1, b2, b3, b4, b5, b6, b7, _b13),
         "ny_continuation":         model_ny_continuation(b1, b2, b3, b4, b5, b6, b7),
         "asian_range_breakout":    model_asian_range_breakout(b1, b2, b3, b4, b5, b6, b7),
         "ob_fvg_stack":            model_ob_fvg_stack(b1, b2, b3, b4, b5, b6, b7),
@@ -1133,19 +1266,38 @@ def run(b1, b2, b3, b4, b5, b6, b7):
         if result["validated"]
     }
 
-    # Best model = highest scoring validated, respecting priority
+    # Best model selection:
+    # 1. First find highest scoring validated model
+    # 2. Then check if any higher-priority model is within 15 points of it
+    # 3. If yes — priority wins. If no — higher score wins.
+    # This means Silver Bullet always beats everything in its window,
+    # but Structural Breakout at 85 beats Liquidity Grab BOS at 70.
     best_model = None
     best_score = 0
 
-    for model_name in MODEL_PRIORITY:
-        if model_name in validated_models:
-            m = validated_models[model_name]
-            if m["score"] > best_score:
-                best_score = m["score"]
-                best_model = m
-                best_model["name"] = model_name
+    # Find highest scoring validated model first
+    for name, m in validated_models.items():
+        if m["score"] > best_score:
+            best_score = m["score"]
+            best_model = m
+            best_model["name"] = name
 
-    # If multiple validated models, only keep highest priority one
+    # Now check if a higher-priority model is close enough to override
+    if best_model:
+        for model_name in MODEL_PRIORITY:
+            if model_name == best_model["name"]:
+                break  # reached current best — nothing higher priority validated
+            if model_name in validated_models:
+                priority_model = validated_models[model_name]
+                # Override if within 15 points OR if it's a time-critical model
+                time_critical = model_name in ["silver_bullet", "momentum_breakout"]
+                within_range  = priority_model["score"] >= best_score - 15
+                if time_critical or within_range:
+                    best_model = priority_model
+                    best_model["name"] = model_name
+                    best_score = priority_model["score"]
+                    break
+
     active_model = best_model
 
     # Engine score
@@ -1160,6 +1312,7 @@ def run(b1, b2, b3, b4, b5, b6, b7):
         "best_model_score":  best_score,
         "engine_score":      engine_score,
         "model_validated":   active_model is not None,
+        "total_models":     len(results),
     }
 
 

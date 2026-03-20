@@ -102,9 +102,38 @@ def unlock_signal(reason="trade_closed"):
 def get_frozen_signal():
     """
     Returns the frozen signal data if locked.
-    Used by API to serve static confluence to Flutter.
+    Returns None if signal is older than 4 hours (auto-expire).
     """
     lock = load_lock()
     if not lock.get("locked"):
         return None
+
+    # Auto-expire signals older than 4 hours
+    signal_time = lock.get("signal_time")
+    if signal_time:
+        try:
+            signal_dt = datetime.fromisoformat(signal_time)
+            hours = (datetime.now() - signal_dt).total_seconds() / 3600
+            if hours > 4:
+                print(f"[Lock] Signal auto-expired after {round(hours, 1)}h")
+                unlock_signal("auto_expired_4h")
+                return None
+        except Exception:
+            pass
+
     return lock
+
+
+def is_signal_stale():
+    """Returns True if locked signal is older than 4 hours."""
+    lock = load_lock()
+    if not lock.get("locked"):
+        return False
+    signal_time = lock.get("signal_time")
+    if not signal_time:
+        return True
+    try:
+        signal_dt = datetime.fromisoformat(signal_time)
+        return (datetime.now() - signal_dt).total_seconds() / 3600 > 4
+    except Exception:
+        return True

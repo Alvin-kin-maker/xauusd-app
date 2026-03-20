@@ -246,161 +246,336 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
 
     # ── MODEL 1: London Sweep & Reverse ──────────────────────────
     if model_name == "london_sweep_reverse":
+        atr = float(b1.get("atr") or 2.0)
         if direction == "sell" and b3.get("asian_high_swept"):
             ah = b3.get("asian_high")
             if ah:
                 ah = float(ah)
-                proximal = round(ah, 2)
-                distal   = round(ah + 5, 2)          # wick above sweep
-                entry    = round(proximal - buf, 2)
-                sl       = round(distal + buf, 2)
-                return _make_zone(entry, sl, proximal, distal, "Asian High Sweep Reversal")
+                # Entry: OB/FVG near Asian High, or Asian High itself
+                ob_e = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+                if ob_e and abs(ob_e["entry"] - ah) <= 2.0:
+                    # SL: above Asian High sweep wick using H4 swing high
+                    h4_sh = b2.get("timeframes", {}).get("H4", {}).get("last_sh")
+                    if h4_sh:
+                        sh_p = float(h4_sh["price"]) if isinstance(h4_sh, dict) else float(h4_sh)
+                        if sh_p > ah:
+                            ob_e["sl"] = round(sh_p + buf, 2)
+                    ob_e["label"] = "London Sweep OB (Sell)"
+                    return ob_e
+                fvg_e = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+                if fvg_e and abs(fvg_e["entry"] - ah) <= 2.0:
+                    fvg_e["label"] = "London Sweep FVG (Sell)"
+                    return fvg_e
+                # Fallback: Asian High with tight ATR SL
+                sl = round(ah + max(atr * 1.0, 5.0), 2)
+                return _make_zone(round(ah - buf, 2), sl, ah, sl, "Asian High Sweep Reversal")
 
         if direction == "buy" and b3.get("asian_low_swept"):
             al = b3.get("asian_low")
             if al:
                 al = float(al)
-                proximal = round(al, 2)
-                distal   = round(al - 5, 2)
-                entry    = round(proximal + buf, 2)
-                sl       = round(distal - buf, 2)
-                return _make_zone(entry, sl, proximal, distal, "Asian Low Sweep Reversal")
+                ob_e = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+                if ob_e and abs(ob_e["entry"] - al) <= 2.0:
+                    h4_sl = b2.get("timeframes", {}).get("H4", {}).get("last_sl")
+                    if h4_sl:
+                        sl_p = float(h4_sl["price"]) if isinstance(h4_sl, dict) else float(h4_sl)
+                        if sl_p < al:
+                            ob_e["sl"] = round(sl_p - buf, 2)
+                    ob_e["label"] = "London Sweep OB (Buy)"
+                    return ob_e
+                fvg_e = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+                if fvg_e and abs(fvg_e["entry"] - al) <= 2.0:
+                    fvg_e["label"] = "London Sweep FVG (Buy)"
+                    return fvg_e
+                sl = round(al - max(atr * 1.0, 5.0), 2)
+                return _make_zone(round(al + buf, 2), sl, al, sl, "Asian Low Sweep Reversal")
 
-        return _smart_ob_fvg(direction, b7, buf, current_price)
+        return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
     # ── MODEL 2: NY Continuation ──────────────────────────────────
     elif model_name == "ny_continuation":
-        result = _smart_ob_fvg(direction, b7, buf)
+        result = _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
         if result:
             result["label"] = "NY Continuation OB"
         return result
 
     # ── MODEL 3: Asian Range Breakout ─────────────────────────────
+    # Entry: OB/FVG at range boundary retest — not the raw boundary price
+    # SL: structural — beyond the candle that formed the boundary
     elif model_name == "asian_range_breakout":
-        ah = b3.get("asian_high")
-        al = b3.get("asian_low")
+        ah  = b3.get("asian_high")
+        al  = b3.get("asian_low")
+        atr = float(b1.get("atr") or 2.0)
+        sl_dist = round(max(atr * 1.0, 5.0), 2)  # minimum 50 pips
+
         if direction == "buy" and ah:
+            # Retest of broken Asian High — look for OB/FVG near that level
             ah = float(ah)
-            proximal = round(ah, 2)
-            distal   = round(ah - 8, 2)
-            entry    = round(proximal + buf, 2)
-            sl       = round(distal - buf, 2)
-            return _make_zone(entry, sl, proximal, distal, "Asian Breakout Retest (Buy)")
+            ob_entry = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+            if ob_entry and abs(ob_entry["entry"] - ah) <= 1.5:
+                ob_entry["label"] = f"Asian Breakout OB Retest"
+                return ob_entry
+            fvg_entry = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+            if fvg_entry and abs(fvg_entry["entry"] - ah) <= 1.5:
+                fvg_entry["label"] = "Asian Breakout FVG Retest"
+                return fvg_entry
+            # Fallback: level with structural SL
+            entry = round(ah + buf, 2)
+            sl    = round(ah - sl_dist, 2)
+            return _make_zone(entry, sl, ah, sl, "Asian High Retest (Buy)")
+
         if direction == "sell" and al:
             al = float(al)
-            proximal = round(al, 2)
-            distal   = round(al + 8, 2)
-            entry    = round(proximal - buf, 2)
-            sl       = round(distal + buf, 2)
-            return _make_zone(entry, sl, proximal, distal, "Asian Breakout Retest (Sell)")
+            ob_entry = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+            if ob_entry and abs(ob_entry["entry"] - al) <= 1.5:
+                ob_entry["label"] = "Asian Breakout OB Retest"
+                return ob_entry
+            fvg_entry = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+            if fvg_entry and abs(fvg_entry["entry"] - al) <= 1.5:
+                fvg_entry["label"] = "Asian Breakout FVG Retest"
+                return fvg_entry
+            entry = round(al - buf, 2)
+            sl    = round(al + sl_dist, 2)
+            return _make_zone(entry, sl, al, sl, "Asian Low Retest (Sell)")
+
         return None
 
     # ── MODEL 4: OB + FVG Stack ───────────────────────────────────
+    # Entry: proximal edge of stack zone
+    # SL: beyond next H4 swing high/low — structural, not just above zone top
     elif model_name == "ob_fvg_stack":
+        atr = float(b1.get("atr") or 2.0)
+
         if direction == "sell":
+            # Structural SL: next H4 swing high above stack
+            struct_sl = None
+            h4_sh = b2.get("timeframes", {}).get("H4", {}).get("last_sh")
+            if h4_sh:
+                sh_p = float(h4_sh["price"]) if isinstance(h4_sh, dict) else float(h4_sh)
+                if sh_p > (current_price or 0):
+                    struct_sl = round(sh_p + buf, 2)
+            if not struct_sl:
+                bsl = b3.get("nearest_bsl")
+                if bsl: struct_sl = round(float(bsl) + buf, 2)
+            if not struct_sl:
+                struct_sl = round((current_price or 0) + max(atr * 1.5, 2.0), 2)
+
             obs  = b7.get("bearish_obs",  [])
             fvgs = b7.get("bearish_fvgs", [])
             if obs and fvgs:
-                ob, fvg    = obs[0], fvgs[0]
+                ob, fvg      = obs[0], fvgs[0]
                 stack_top    = max(float(ob["top"]),    float(fvg["top"]))
                 stack_bottom = min(float(ob["bottom"]), float(fvg["bottom"]))
-                proximal = round(stack_top, 2)       # SELL: price comes from above
-                distal   = round(stack_bottom, 2)    # far side = bottom of stack
-                entry    = round(proximal - buf, 2)
-                sl       = round(proximal + buf, 2)  # SL just ABOVE stack top (above entry)
-                stack_size = round(stack_top - stack_bottom, 2)
-                # Skip if entry too far from price or stack too large
-                if (current_price and abs(proximal - current_price) > 2.5) or stack_size > 3.0:
-                    pass  # fall through to OB-only
-                else:
-                    result = _make_zone(entry, sl, proximal, distal, "OB+FVG Stack (Sell)")
+                proximal     = round(stack_top, 2)
+                distal       = round(stack_bottom, 2)
+                entry        = round(proximal - buf, 2)
+                stack_size   = round(stack_top - stack_bottom, 2)
+                if not (current_price and abs(proximal - current_price) > 2.5) and stack_size <= 3.0:
+                    result = _make_zone(entry, struct_sl, proximal, distal, "OB+FVG Stack (Sell)")
                     result["stack_size"] = stack_size
                     return result
             if obs:
-                ob = obs[0]
+                ob       = obs[0]
                 proximal = round(float(ob["top"]), 2)
                 distal   = round(float(ob["bottom"]), 2)
                 if not (current_price and abs(proximal - current_price) > 2.5):
-                    entry    = round(proximal - buf, 2)
-                    sl       = round(proximal + buf, 2)  # SL above OB top
-                    return _make_zone(entry, sl, proximal, distal, "Bear OB (Sell)")
+                    entry = round(proximal - buf, 2)
+                    return _make_zone(entry, struct_sl, proximal, distal, "Bear OB (Sell)")
 
         elif direction == "buy":
+            # Structural SL: next H4 swing low below stack
+            struct_sl = None
+            h4_sl = b2.get("timeframes", {}).get("H4", {}).get("last_sl")
+            if h4_sl:
+                sl_p = float(h4_sl["price"]) if isinstance(h4_sl, dict) else float(h4_sl)
+                if sl_p < (current_price or 9999):
+                    struct_sl = round(sl_p - buf, 2)
+            if not struct_sl:
+                ssl = b3.get("nearest_ssl")
+                if ssl: struct_sl = round(float(ssl) - buf, 2)
+            if not struct_sl:
+                struct_sl = round((current_price or 0) - max(atr * 1.5, 2.0), 2)
+
             obs  = b7.get("bullish_obs",  [])
             fvgs = b7.get("bullish_fvgs", [])
             if obs and fvgs:
-                ob, fvg    = obs[0], fvgs[0]
+                ob, fvg      = obs[0], fvgs[0]
                 stack_top    = max(float(ob["top"]),    float(fvg["top"]))
                 stack_bottom = min(float(ob["bottom"]), float(fvg["bottom"]))
-                proximal = round(stack_bottom, 2)
-                distal   = round(stack_top, 2)
-                entry    = round(proximal + buf, 2)
-                sl       = round(distal + buf, 2)
-                stack_size = round(stack_top - stack_bottom, 2)
-                if (current_price and abs(proximal - current_price) > 2.5) or stack_size > 3.0:
-                    pass  # fall through
-                else:
-                    result = _make_zone(entry, sl, proximal, distal, "OB+FVG Stack (Buy)")
+                proximal     = round(stack_bottom, 2)
+                distal       = round(stack_top, 2)
+                entry        = round(proximal + buf, 2)
+                stack_size   = round(stack_top - stack_bottom, 2)
+                if not (current_price and abs(proximal - current_price) > 2.5) and stack_size <= 3.0:
+                    result = _make_zone(entry, struct_sl, proximal, distal, "OB+FVG Stack (Buy)")
                     result["stack_size"] = stack_size
                     return result
             elif obs:
-                ob = obs[0]
+                ob       = obs[0]
                 proximal = round(float(ob["bottom"]), 2)
                 distal   = round(float(ob["top"]), 2)
                 entry    = round(proximal + buf, 2)
-                sl       = round(distal + buf, 2)
-                return _make_zone(entry, sl, proximal, distal, "Bull OB (Buy)")
+                return _make_zone(entry, struct_sl, proximal, distal, "Bull OB (Buy)")
 
         return None
 
     # ── MODEL 5: Liquidity Grab + BOS ─────────────────────────────
+    # Entry: FVG after displacement
+    # SL: beyond swept level (PDH/PDL) — not FVG bottom
     elif model_name == "liquidity_grab_bos":
-        fvg = _smart_fvg(direction, b7, buf)
+        atr = float(b1.get("atr") or 2.0)
+        fvg = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
         if fvg:
             fvg["label"] = "FVG After BOS Displacement"
+            # Override SL — use swept level structure not FVG bottom
+            if direction == "sell":
+                pdh = b3.get("pdh")
+                bsl = b3.get("nearest_bsl")
+                h4_sh = b2.get("timeframes", {}).get("H4", {}).get("last_sh")
+                struct_sl = None
+                if h4_sh:
+                    sh_p = float(h4_sh["price"]) if isinstance(h4_sh, dict) else float(h4_sh)
+                    if sh_p > fvg["entry"] and abs(sh_p - fvg["entry"]) <= 5.0:
+                        struct_sl = round(sh_p + buf, 2)
+                if not struct_sl and pdh and float(pdh) > fvg["entry"]:
+                    struct_sl = round(float(pdh) + buf, 2)
+                if not struct_sl and bsl and float(bsl) > fvg["entry"]:
+                    struct_sl = round(float(bsl) + buf, 2)
+                if not struct_sl:
+                    struct_sl = round(fvg["entry"] + max(atr * 1.5, 1.5), 2)
+                fvg["sl"] = struct_sl
+            else:
+                pdl = b3.get("pdl")
+                ssl = b3.get("nearest_ssl")
+                h4_sl = b2.get("timeframes", {}).get("H4", {}).get("last_sl")
+                struct_sl = None
+                if h4_sl:
+                    sl_p = float(h4_sl["price"]) if isinstance(h4_sl, dict) else float(h4_sl)
+                    if sl_p < fvg["entry"] and abs(fvg["entry"] - sl_p) <= 5.0:
+                        struct_sl = round(sl_p - buf, 2)
+                if not struct_sl and pdl and float(pdl) < fvg["entry"]:
+                    struct_sl = round(float(pdl) - buf, 2)
+                if not struct_sl and ssl and float(ssl) < fvg["entry"]:
+                    struct_sl = round(float(ssl) - buf, 2)
+                if not struct_sl:
+                    struct_sl = round(fvg["entry"] - max(atr * 1.5, 1.5), 2)
+                fvg["sl"] = struct_sl
             return fvg
 
         if direction == "buy" and b3.get("pdl_swept"):
             pdl = b3.get("pdl")
             if pdl:
-                pdl = float(pdl)
-                proximal = round(pdl, 2)
-                distal   = round(pdl - 10, 2)
-                entry    = round(proximal + buf, 2)
-                sl       = round(distal - buf, 2)
-                return _make_zone(entry, sl, proximal, distal, "PDL Sweep + BOS")
+                pdl   = float(pdl)
+                atr   = float(b1.get("atr") or 2.0)
+                # SL: below PDL — tight, just beyond swept level
+                sl    = round(pdl - max(atr * 1.0, 5.0), 2)
+                entry = round(pdl + buf, 2)
+                return _make_zone(entry, sl, pdl, sl, "PDL Sweep + BOS (Buy)")
 
         if direction == "sell" and b3.get("pdh_swept"):
             pdh = b3.get("pdh")
             if pdh:
-                pdh = float(pdh)
-                proximal = round(pdh, 2)
-                distal   = round(pdh + 10, 2)
-                entry    = round(proximal - buf, 2)
-                sl       = round(distal + buf, 2)
-                return _make_zone(entry, sl, proximal, distal, "PDH Sweep + BOS")
+                pdh   = float(pdh)
+                atr   = float(b1.get("atr") or 2.0)
+                # SL: above PDH — tight, just beyond swept level
+                sl    = round(pdh + max(atr * 1.0, 5.0), 2)
+                entry = round(pdh - buf, 2)
+                return _make_zone(entry, sl, pdh, sl, "PDH Sweep + BOS (Sell)")
 
-        return _smart_ob_fvg(direction, b7, buf, current_price)
+        return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
     # ── MODEL 6: HTF Level Reaction ───────────────────────────────
+    # Entry priority: OB at level > FVG at level > Fibonacci OTE > level price
+    # SL: structural — beyond next swing high/low from B2 (H4 or D1 level)
     elif model_name == "htf_level_reaction":
         closest = b4.get("closest_level")
+
         if closest and b4.get("at_key_level"):
             level = float(closest.get("level") or closest.get("price") or 0)
             if level > 0:
-                if direction == "buy":
-                    proximal = round(level, 2)
-                    distal   = round(level - 12, 2)
-                    entry    = round(proximal + buf, 2)
-                    sl       = round(distal - buf, 2)
+                # Structural SL — use next swing high (sell) or low (buy) from H4/D1
+                # This gives a proper 100-300 pip SL matching the HTF setup
+                sl = None
+                if direction == "sell":
+                    # SL beyond next swing high above entry
+                    for tf in ["H4", "D1", "H1"]:
+                        tf_data = b2.get("timeframes", {}).get(tf, {})
+                        last_sh = tf_data.get("last_sh")
+                        if last_sh:
+                            sh_price = float(last_sh["price"]) if isinstance(last_sh, dict) else float(last_sh)
+                            if sh_price > level:
+                                sl = round(sh_price + buf, 2)
+                                break
+                    # Fallback: nearest BSL above level
+                    if not sl:
+                        bsl = b3.get("nearest_bsl")
+                        if bsl and float(bsl) > level:
+                            sl = round(float(bsl) + buf, 2)
+                    # Last fallback: PDH
+                    if not sl:
+                        pdh = b3.get("pdh") or b4.get("pdh")
+                        if pdh and float(pdh) > level:
+                            sl = round(float(pdh) + buf, 2)
                 else:
-                    proximal = round(level, 2)
-                    distal   = round(level + 12, 2)
-                    entry    = round(proximal - buf, 2)
-                    sl       = round(distal + buf, 2)
-                return _make_zone(entry, sl, proximal, distal,
+                    # SL beyond next swing low below entry
+                    for tf in ["H4", "D1", "H1"]:
+                        tf_data = b2.get("timeframes", {}).get(tf, {})
+                        last_sl_pt = tf_data.get("last_sl")
+                        if last_sl_pt:
+                            sl_price = float(last_sl_pt["price"]) if isinstance(last_sl_pt, dict) else float(last_sl_pt)
+                            if sl_price < level:
+                                sl = round(sl_price - buf, 2)
+                                break
+                    if not sl:
+                        ssl = b3.get("nearest_ssl")
+                        if ssl and float(ssl) < level:
+                            sl = round(float(ssl) - buf, 2)
+                    if not sl:
+                        pdl = b3.get("pdl") or b4.get("pdl")
+                        if pdl and float(pdl) < level:
+                            sl = round(float(pdl) - buf, 2)
+
+                # Absolute fallback if no structure found
+                if not sl:
+                    atr = float(b1.get("atr") or 3.0)
+                    sl = round(level + atr * 2.0, 2) if direction == "sell" else round(level - atr * 2.0, 2)
+
+                # Hard cap: SL max 200 pips (2.0 pts) from entry
+                # HTF level trades are high conviction but SL still needs to be tradeable
+                MAX_SL_DISTANCE = 2.0  # 200 pips max
+                if sl and abs(level - sl) > MAX_SL_DISTANCE:
+                    atr = float(b1.get("atr") or 3.0)
+                    sl = round(level + min(atr * 0.5, MAX_SL_DISTANCE), 2) if direction == "sell"                          else round(level - min(atr * 0.5, MAX_SL_DISTANCE), 2)
+
+                # Priority 1: OB at/near the level
+                ob_entry = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+                if ob_entry and abs(ob_entry["entry"] - level) <= 1.5:
+                    ob_entry["sl"]    = sl
+                    ob_entry["label"] = f"HTF Level OB: {closest.get('label','')}"
+                    return ob_entry
+
+                # Priority 2: FVG at/near the level
+                fvg_entry = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+                if fvg_entry and abs(fvg_entry["entry"] - level) <= 1.5:
+                    fvg_entry["sl"]    = sl
+                    fvg_entry["label"] = f"HTF Level FVG: {closest.get('label','')}"
+                    return fvg_entry
+
+                # Priority 3: Fibonacci OTE 70.5%
+                ote = b7.get("ote_m15") or b7.get("ote_h1")
+                if ote and ote.get("in_ote"):
+                    ote_705 = ote.get("ote_705")
+                    if ote_705:
+                        entry = round(float(ote_705) - buf, 2) if direction == "sell" else round(float(ote_705) + buf, 2)
+                        return _make_zone(entry, sl, float(ote_705), sl,
+                                          f"HTF Level OTE 70.5%: {closest.get('label','')}")
+
+                # Priority 4: Level price with structural SL
+                entry = round(level - buf, 2) if direction == "sell" else round(level + buf, 2)
+                return _make_zone(entry, sl, level, sl,
                                   f"HTF Level: {closest.get('label', '')}")
-        return _smart_ob_fvg(direction, b7, buf, current_price)
+
+        return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
     # ── MODEL 7: CHOCH Reversal ───────────────────────────────────
     elif model_name == "choch_reversal":
@@ -409,7 +584,8 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
             proximal = round(float(bb["bottom"]), 2)
             distal   = round(float(bb["top"]), 2)
             entry    = round(proximal + buf, 2)
-            sl       = round(proximal - buf, 2)
+            atr_buf  = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+            sl       = round(proximal - atr_buf, 2)  # SL below breaker + ATR buffer
             return _make_zone(entry, sl, proximal, distal, "Bull Breaker (CHOCH)")
 
         if direction == "sell" and b7.get("bear_breakers"):
@@ -417,35 +593,61 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
             proximal = round(float(bb["top"]), 2)
             distal   = round(float(bb["bottom"]), 2)
             entry    = round(proximal - buf, 2)
-            sl       = round(proximal + buf, 2)
+            atr_buf  = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+            sl       = round(proximal + atr_buf, 2)  # SL above breaker + ATR buffer
             return _make_zone(entry, sl, proximal, distal, "Bear Breaker (CHOCH)")
 
-        return _smart_ob_fvg(direction, b7, buf, current_price)
+        return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
     # ── MODEL 8: Double Top/Bottom Trap ──────────────────────────
+    # Entry: FVG/OB at neckline level — confirms rejection not just price at level
+    # SL: beyond pattern high/low (level2) — structural
     elif model_name == "double_top_bottom_trap":
+        atr = float(b1.get("atr") or 2.0)
         for p in b7.get("patterns", []):
             if p["type"] == "double_top" and direction == "sell":
                 neckline = p.get("neckline")
                 level2   = p.get("level2")
                 if neckline and level2:
-                    proximal = round(float(neckline), 2)
-                    distal   = round(float(level2) + 5, 2)
-                    entry    = round(proximal - buf, 2)
-                    sl       = round(distal + buf, 2)
-                    return _make_zone(entry, sl, proximal, distal, "Double Top Neckline")
+                    neck = float(neckline)
+                    top  = float(level2)
+                    # Look for FVG/OB at/near neckline
+                    fvg_e = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+                    if fvg_e and abs(fvg_e["entry"] - neck) <= 1.0:
+                        fvg_e["label"] = "Double Top FVG Entry"
+                        fvg_e["sl"] = round(top + buf, 2)  # SL above pattern top
+                        return fvg_e
+                    ob_e = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+                    if ob_e and abs(ob_e["entry"] - neck) <= 1.0:
+                        ob_e["label"] = "Double Top OB Entry"
+                        ob_e["sl"] = round(top + buf, 2)
+                        return ob_e
+                    # Fallback: neckline with structural SL
+                    entry = round(neck - buf, 2)
+                    sl    = round(top + buf, 2)
+                    return _make_zone(entry, sl, neck, top, "Double Top Neckline")
 
             if p["type"] == "double_bottom" and direction == "buy":
                 neckline = p.get("neckline")
                 level2   = p.get("level2")
                 if neckline and level2:
-                    proximal = round(float(neckline), 2)
-                    distal   = round(float(level2) - 5, 2)
-                    entry    = round(proximal + buf, 2)
-                    sl       = round(distal - buf, 2)
-                    return _make_zone(entry, sl, proximal, distal, "Double Bottom Neckline")
+                    neck   = float(neckline)
+                    bottom = float(level2)
+                    fvg_e = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+                    if fvg_e and abs(fvg_e["entry"] - neck) <= 1.0:
+                        fvg_e["label"] = "Double Bottom FVG Entry"
+                        fvg_e["sl"] = round(bottom - buf, 2)
+                        return fvg_e
+                    ob_e = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+                    if ob_e and abs(ob_e["entry"] - neck) <= 1.0:
+                        ob_e["label"] = "Double Bottom OB Entry"
+                        ob_e["sl"] = round(bottom - buf, 2)
+                        return ob_e
+                    entry = round(neck + buf, 2)
+                    sl    = round(bottom - buf, 2)
+                    return _make_zone(entry, sl, neck, bottom, "Double Bottom Neckline")
 
-        return _smart_ob_fvg(direction, b7, buf, current_price)
+        return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
     # ── MODEL 9: OB Mitigation ────────────────────────────────────
     elif model_name == "ob_mitigation":
@@ -456,7 +658,8 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
                 proximal = round(float(ob["bottom"]), 2)
                 distal   = round(float(ob["top"]), 2)
                 entry    = round(proximal + buf, 2)
-                sl       = round(proximal - buf, 2)
+                atr_buf  = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+                sl       = round(proximal - atr_buf, 2)  # SL below OB + ATR buffer
                 return _make_zone(entry, sl, proximal, distal, "Bull OB Mitigation")
 
         if direction == "sell":
@@ -466,14 +669,15 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
                 proximal = round(float(ob["top"]), 2)
                 distal   = round(float(ob["bottom"]), 2)
                 entry    = round(proximal - buf, 2)
-                sl       = round(proximal + buf, 2)
+                atr_buf  = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+                sl       = round(proximal + atr_buf, 2)  # SL above OB + ATR buffer
                 return _make_zone(entry, sl, proximal, distal, "Bear OB Mitigation")
 
         return None
 
     # ── MODEL 10: FVG Continuation ────────────────────────────────
     elif model_name == "fvg_continuation":
-        result = _smart_fvg(direction, b7, buf)
+        result = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
         if result:
             result["label"] = "FVG CE (Continuation)"
         return result
@@ -489,8 +693,9 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
                 proximal = round(float(fvg["bottom"]), 2)
                 distal   = round(float(fvg["top"]), 2)
                 entry    = round(proximal + buf, 2)
-                ssl_level = b3.get("asian_low") or b3.get("pdl")
-                sl = round(float(ssl_level) - buf * 2, 2) if ssl_level else round(proximal - buf, 2)
+                # SL: below FVG bottom + ATR buffer (50-150 pips)
+                atr_buf = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+                sl = round(proximal - atr_buf, 2)
                 return _make_zone(entry, sl, proximal, distal, "Silver Bullet FVG (Buy)")
 
         if direction == "sell":
@@ -500,13 +705,54 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
                 proximal = round(float(fvg["top"]), 2)
                 distal   = round(float(fvg["bottom"]), 2)
                 entry    = round(proximal - buf, 2)
-                bsl_level = b3.get("asian_high") or b3.get("pdh")
-                sl = round(float(bsl_level) + buf * 2, 2) if bsl_level else round(proximal + buf, 2)
+                # SL: above FVG top + ATR buffer (50-150 pips)
+                atr_buf = max(float(b1.get("atr") or 2.0) * 1.0, 1.0)  # minimum 100 pips
+                sl = round(proximal + atr_buf, 2)
                 return _make_zone(entry, sl, proximal, distal, "Silver Bullet FVG (Sell)")
 
-        return _smart_fvg(direction, b7, buf, current_price)
+        return _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
-    return _smart_ob_fvg(direction, b7, buf, current_price)
+    # ── BREAKOUT MODELS ─────────────────────────────────────────────
+    if model_name == "momentum_breakout":
+        # Straight shooter — entry just beyond breakout candle close
+        # SL: beyond breakout candle extreme (low for sells, high for buys)
+        atr = float(b1.get("atr") or 2.0)
+        if direction == "sell":
+            entry = round(current_price - 0.3, 2)
+            sl    = round(current_price + max(atr * 1.0, 5.0), 2)
+            return _make_zone(entry, sl, current_price, sl, "Momentum Breakout (Sell)")
+        elif direction == "buy":
+            entry = round(current_price + 0.3, 2)
+            sl    = round(current_price - max(atr * 1.0, 5.0), 2)
+            return _make_zone(entry, sl, current_price, sl, "Momentum Breakout (Buy)")
+
+    if model_name == "structural_breakout":
+        # BOS retest — entry at OB/FVG near the broken level
+        # This is a sniper entry, not current price
+        ob_entry  = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+        fvg_entry = _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+        # Pick whichever is closer to price
+        if ob_entry and fvg_entry:
+            ob_dist  = abs(ob_entry["entry"]  - current_price)
+            fvg_dist = abs(fvg_entry["entry"] - current_price)
+            best = ob_entry if ob_dist <= fvg_dist else fvg_entry
+            best["label"] = "Structural Breakout Retest"
+            return best
+        entry_zone = ob_entry or fvg_entry
+        if entry_zone:
+            entry_zone["label"] = "Structural Breakout Retest"
+            return entry_zone
+        # Fallback: current price with ATR SL
+        atr = float(b1.get("atr") or 2.0)
+        if direction == "sell":
+            entry = round(current_price - 0.3, 2)
+            sl    = round(current_price + atr * 0.5, 2)
+        else:
+            entry = round(current_price + 0.3, 2)
+            sl    = round(current_price - atr * 0.5, 2)
+        return _make_zone(entry, sl, current_price, sl, "Structural Breakout")
+
+    return _smart_ob_fvg(direction, b7, buf, current_price, b1, b2, b3)
 
 
 # ============================================================
@@ -521,11 +767,11 @@ def _make_zone(entry, sl, proximal, distal, label):
     
     # SL is structural — only floor is noise prevention (< 3 pips)
     sl_distance = abs(entry - sl)
-    if sl_distance < 0.3:
+    if sl_distance < 0.5:  # minimum 5 pips — below this gets stopped by spread
         if entry > sl:  # buy: sl is below
-            sl = round(entry - 0.3, 2)
+            sl = round(entry - 0.5, 2)
         else:
-            sl = round(entry + 0.3, 2)
+            sl = round(entry + 0.5, 2)
     
     return {
         "entry":       entry,
@@ -539,17 +785,73 @@ def _make_zone(entry, sl, proximal, distal, label):
     }
 
 
-def _smart_ob_fvg(direction, b7, buf, current_price=None):
-    return _smart_ob(direction, b7, buf, current_price) or _smart_fvg(direction, b7, buf, current_price)
+def _get_structural_sl(direction, entry_price, b1, b2, b3, max_pips=5.0):
+    """
+    Calculate a proper structural SL for any model.
+    Priority: H4 swing high/low → BSL/SSL → PDH/PDL → ATR-based
+    Hard cap: max_pips price points from entry (default 500 pips)
+    """
+    atr = float(b1.get("atr") or 2.0) if b1 else 2.0
+    sl  = None
+
+    if direction == "sell":
+        if b2:
+            for tf in ["H4", "D1", "H1"]:
+                sh = b2.get("timeframes", {}).get(tf, {}).get("last_sh")
+                if sh:
+                    p = float(sh["price"]) if isinstance(sh, dict) else float(sh)
+                    if p > entry_price and (p - entry_price) <= max_pips:
+                        sl = round(p + 0.5, 2)
+                        break
+        if not sl and b3:
+            bsl = b3.get("nearest_bsl")
+            if bsl and float(bsl) > entry_price and (float(bsl) - entry_price) <= max_pips:
+                sl = round(float(bsl) + 0.5, 2)
+        if not sl and b3:
+            pdh = b3.get("pdh")
+            if pdh and float(pdh) > entry_price and (float(pdh) - entry_price) <= max_pips:
+                sl = round(float(pdh) + 0.5, 2)
+        if not sl:
+            sl = round(entry_price + min(atr * 1.5, max_pips), 2)
+    else:
+        if b2:
+            for tf in ["H4", "D1", "H1"]:
+                sl_pt = b2.get("timeframes", {}).get(tf, {}).get("last_sl")
+                if sl_pt:
+                    p = float(sl_pt["price"]) if isinstance(sl_pt, dict) else float(sl_pt)
+                    if p < entry_price and (entry_price - p) <= max_pips:
+                        sl = round(p - 0.5, 2)
+                        break
+        if not sl and b3:
+            ssl = b3.get("nearest_ssl")
+            if ssl and float(ssl) < entry_price and (entry_price - float(ssl)) <= max_pips:
+                sl = round(float(ssl) - 0.5, 2)
+        if not sl and b3:
+            pdl = b3.get("pdl")
+            if pdl and float(pdl) < entry_price and (entry_price - float(pdl)) <= max_pips:
+                sl = round(float(pdl) - 0.5, 2)
+        if not sl:
+            sl = round(entry_price - min(atr * 1.5, max_pips), 2)
+
+    return sl
 
 
-def _smart_ob(direction, b7, buf, current_price=None):
+def _smart_ob_fvg(direction, b7, buf, current_price=None, b1=None, b2=None, b3=None):
+    result = _smart_ob(direction, b7, buf, current_price, b1, b2, b3)
+    if result:
+        return result
+    return _smart_fvg(direction, b7, buf, current_price, b1, b2, b3)
+
+
+def _smart_ob(direction, b7, buf, current_price=None, b1=None, b2=None, b3=None):
     """
-    Find best quality OB: closest to price, fewest touches, biggest size.
-    Fresh OBs (0 touches) are preferred. Over-touched (3+) are rejected.
+    Find best quality OB.
+    SL = just beyond the distal edge of the OB (zone edge SL).
+    Sniper logic: if price closes beyond the OB it's invalid — that's the SL.
+    Typically 10-50 pips depending on OB size.
     """
-    MAX_DIST = 2.5  # 25 pips
-    MIN_SIZE = 0.8  # 8 pips minimum
+    MAX_DIST = 2.5
+    MIN_SIZE = 0.8
 
     if direction == "buy":
         obs = b7.get("bullish_obs", [])
@@ -568,8 +870,12 @@ def _smart_ob(direction, b7, buf, current_price=None):
             candidates.sort()
             _, t, _, proximal, distal = candidates[0]
             label = "Bull OB (fresh)" if t == 0 else "Bull OB"
-            return _make_zone(round(proximal + buf, 2), round(proximal - buf, 2),
-                              proximal, distal, label)
+            entry_price = round(proximal + buf, 2)
+            # SL: below OB bottom - ATR buffer (50-150 pip breathing room)
+            atr_buf = float(b1.get("atr") or 2.0) * 1.0 if b1 else 5.0
+            atr_buf = max(atr_buf, 5.0)  # minimum 50 pips
+            sl = round(proximal - atr_buf, 2)
+            return _make_zone(entry_price, sl, proximal, distal, label)
 
     elif direction == "sell":
         obs = b7.get("bearish_obs", [])
@@ -588,12 +894,17 @@ def _smart_ob(direction, b7, buf, current_price=None):
             candidates.sort()
             _, t, _, proximal, distal = candidates[0]
             label = "Bear OB (fresh)" if t == 0 else "Bear OB"
-            return _make_zone(round(proximal - buf, 2), round(proximal + buf, 2),
-                              proximal, distal, label)
+            entry_price = round(proximal - buf, 2)
+            # SL: above OB top + ATR buffer (50-150 pip breathing room)
+            atr_buf = float(b1.get("atr") or 2.0) * 1.0 if b1 else 5.0
+            atr_buf = max(atr_buf, 5.0)  # minimum 50 pips
+            sl = round(proximal + atr_buf, 2)
+            return _make_zone(entry_price, sl, proximal, distal, label)
     return None
 
-def _smart_fvg(direction, b7, buf, current_price=None):
-    MAX_DIST = 2.5  # 25 pips
+
+def _smart_fvg(direction, b7, buf, current_price=None, b1=None, b2=None, b3=None):
+    MAX_DIST = 2.5
     if direction == "buy":
         fvgs = b7.get("bullish_fvgs", [])
         for fvg in fvgs:
@@ -602,7 +913,11 @@ def _smart_fvg(direction, b7, buf, current_price=None):
             entry    = round(float(fvg["midpoint"]), 2)
             if current_price and abs(entry - current_price) > MAX_DIST:
                 continue
-            return _make_zone(entry, round(proximal - buf, 2), proximal, distal, "Bull FVG CE")
+            # SL: below FVG bottom + ATR buffer
+            atr_buf = float(b1.get("atr") or 2.0) * 1.0 if b1 else 5.0
+            atr_buf = max(atr_buf, 5.0)  # minimum 50 pips
+            sl = round(proximal - atr_buf, 2)
+            return _make_zone(entry, sl, proximal, distal, "Bull FVG CE")
     elif direction == "sell":
         fvgs = b7.get("bearish_fvgs", [])
         for fvg in fvgs:
@@ -611,37 +926,121 @@ def _smart_fvg(direction, b7, buf, current_price=None):
             entry    = round(float(fvg["midpoint"]), 2)
             if current_price and abs(entry - current_price) > MAX_DIST:
                 continue
-            # SELL: entry at CE, SL above proximal (top)
-            return _make_zone(entry, round(proximal + buf, 2), proximal, distal, "Bear FVG CE")
-            if current_price and abs(entry - current_price) > MAX_DIST:
-                continue
-            return _make_zone(entry, round(proximal + buf, 2), proximal, distal, "Bear FVG CE")
+            # SL: above FVG top + ATR buffer
+            atr_buf = float(b1.get("atr") or 2.0) * 1.0 if b1 else 5.0
+            atr_buf = max(atr_buf, 5.0)  # minimum 50 pips
+            sl = round(proximal + atr_buf, 2)
+            return _make_zone(entry, sl, proximal, distal, "Bear FVG CE")
     return None
 
 
 # ============================================================
-# TP CALCULATION — no cap, structure dictates SL
+# TP CALCULATION — structure-based targets from liquidity pools
 # ============================================================
 
-def calculate_tps(direction, entry, sl):
+def _collect_targets(direction, entry, b3, b2, b4):
+    """
+    Collect ALL potential TP target levels from every available source.
+    Returns sorted list of prices in trade direction.
+    Sources: SSL/BSL, EQH/EQL, PDH/PDL, swing H/L (M15+H4), pivots, psych levels, gaps.
+    """
+    targets = []
+
+    def add(price, label):
+        if price and price != 0:
+            p = float(price)
+            if direction == "sell" and p < entry:
+                targets.append((entry - p, p, label))
+            elif direction == "buy" and p > entry:
+                targets.append((p - entry, p, label))
+
+    if b3:
+        for lvl in b3.get("ssl_levels", []):
+            add(lvl.get("level") or lvl.get("price"), "SSL")
+        for lvl in b3.get("bsl_levels", []):
+            add(lvl.get("level") or lvl.get("price"), "BSL")
+        for lvl in b3.get("eql_levels", []):
+            add(lvl.get("level"), "EQL")
+        for lvl in b3.get("eqh_levels", []):
+            add(lvl.get("level"), "EQH")
+        add(b3.get("pdh"), "PDH")
+        add(b3.get("pdl"), "PDL")
+        add(b3.get("pwh"), "PWH")
+        add(b3.get("pwl"), "PWL")
+        add(b3.get("asian_high"), "Asian High")
+        add(b3.get("asian_low"),  "Asian Low")
+
+    if b2:
+        for tf in ["M15", "H1", "H4", "D1"]:
+            tf_data = b2.get("timeframes", {}).get(tf, {})
+            last_sh = tf_data.get("last_sh")
+            last_sl = tf_data.get("last_sl")
+            if last_sh:
+                p = last_sh["price"] if isinstance(last_sh, dict) else last_sh
+                add(p, f"{tf} Swing High")
+            if last_sl:
+                p = last_sl["price"] if isinstance(last_sl, dict) else last_sl
+                add(p, f"{tf} Swing Low")
+
+    if b4:
+        for lvl in b4.get("all_levels", []):
+            add(lvl.get("level"), lvl.get("label", lvl.get("source", "Level")))
+        add(b4.get("nwog_ce"), "NWOG CE")
+        add(b4.get("ndog_ce"), "NDOG CE")
+
+    # Sort by distance from entry (nearest first)
+    targets.sort(key=lambda x: x[0])
+    return targets
+
+
+def calculate_tps(direction, entry, sl, b3=None, b2=None, b4=None):
+    """
+    TPs target real liquidity pools and structure levels.
+    Collects ALL available targets and picks best ones per TP level.
+
+    TP1 → nearest meaningful target >= 1:1 RR
+    TP2 → next target >= 1:2 RR
+    TP3 → furthest meaningful target >= 1:3 RR (swing high/low, major pivot, psych)
+
+    Minimum RR floors enforced — never takes a worse-than-RR target.
+    Falls back to RR multiples if no structure targets found.
+    """
     sl_distance = abs(entry - sl)
-    # SL is purely structural — no fixed minimum
-    # Only reject if it's literally noise (< 3 pips = 0.3 price points)
-    if sl_distance < 0.3:
-        sl_distance = 0.3
+    if sl_distance < 0.5:
+        sl_distance = 0.5
         sl = round(entry - sl_distance, 2) if direction == "buy" else round(entry + sl_distance, 2)
 
-    if direction == "buy":
-        tp1 = round(entry + sl_distance * TP1_RR, 2)
-        tp2 = round(entry + sl_distance * TP2_RR, 2)
-        tp3 = round(entry + sl_distance * TP3_RR, 2)
-    else:
-        tp1 = round(entry - sl_distance * TP1_RR, 2)
-        tp2 = round(entry - sl_distance * TP2_RR, 2)
-        tp3 = round(entry - sl_distance * TP3_RR, 2)
+    min_tp1 = sl_distance * TP1_RR
+    min_tp2 = sl_distance * TP2_RR
+    min_tp3 = sl_distance * TP3_RR
+
+    tp1 = tp2 = tp3 = None
+
+    if b3 or b2 or b4:
+        targets = _collect_targets(direction, entry, b3, b2, b4)
+
+        for dist, price, label in targets:
+            if not tp1 and dist >= min_tp1:
+                tp1 = round(price, 2)
+            elif tp1 and not tp2 and dist >= min_tp2 and abs(price - tp1) > 0.5:
+                # Must be at least 5 pips from TP1 to count as separate target
+                tp2 = round(price, 2)
+            elif tp2 and not tp3 and dist >= min_tp3 and abs(price - tp2) > 0.5:
+                # Must be at least 5 pips from TP2 to count as separate target
+                tp3 = round(price, 2)
+            if tp1 and tp2 and tp3:
+                break
+
+    # Fallback to RR if no structure targets found
+    if not tp1:
+        tp1 = round(entry + min_tp1, 2) if direction == "buy" else round(entry - min_tp1, 2)
+    if not tp2:
+        tp2 = round(entry + min_tp2, 2) if direction == "buy" else round(entry - min_tp2, 2)
+    if not tp3:
+        tp3 = round(entry + min_tp3, 2) if direction == "buy" else round(entry - min_tp3, 2)
 
     return {
-        "sl":          sl,   # adjusted sl if minimum was applied
+        "sl":          sl,
         "tp1": tp1, "tp2": tp2, "tp3": tp3,
         "sl_distance": round(sl_distance, 2),
         "sl_pips":     round(sl_distance * 10, 1),
@@ -669,20 +1068,19 @@ def process_state_machine(trade_state, b9, current_price, entry_data, lot_size, 
             pass
 
     # ── IDLE / COOLDOWN → SIGNAL ───────────────────────────────────
+    # TPs and SL are already calculated in run() before calling here
+    # entry_data already contains tp1/tp2/tp3/sl from calculate_tps
     if status in ["IDLE", "COOLDOWN"]:
         if b9["should_trade"] and entry_data:
-            tps = calculate_tps(b9["direction"], entry_data["entry"], entry_data["sl"])
-            # Use updated SL from calculate_tps (minimum may have been applied)
-            final_sl = tps.get("sl", entry_data["sl"])
             trade_state.update({
                 "status":         "SIGNAL",
                 "direction":      b9["direction"],
                 "model_name":     model_name,
                 "entry_price":    entry_data["entry"],
-                "sl_price":       final_sl,
-                "tp1_price":      tps["tp1"],
-                "tp2_price":      tps["tp2"],
-                "tp3_price":      tps["tp3"],
+                "sl_price":       entry_data["sl"],
+                "tp1_price":      entry_data.get("tp1"),
+                "tp2_price":      entry_data.get("tp2"),
+                "tp3_price":      entry_data.get("tp3"),
                 "lot_size":       lot_size,
                 "signal_time":    now,
                 "tp1_hit":        False,
@@ -690,9 +1088,9 @@ def process_state_machine(trade_state, b9, current_price, entry_data, lot_size, 
                 "sl_moved_to_be": False,
                 "partial_closed": False,
                 "m1_confirmed":   False,
-                "state_message":  f"Limit at {entry_data['entry']} | {entry_data['label']}",
+                "state_message":  f"Limit at {entry_data['entry']} | {entry_data.get('label','')}",
             })
-            return trade_state, f"SIGNAL — Limit {entry_data['entry']} ({entry_data['label']})"
+            return trade_state, f"SIGNAL — Limit {entry_data['entry']} ({entry_data.get('label','')})"
         return trade_state, "Scanning — no setup found"
 
     # ── SIGNAL → ACTIVE ────────────────────────────────────────────
@@ -725,7 +1123,16 @@ def process_state_machine(trade_state, b9, current_price, entry_data, lot_size, 
                 trade_state["state_message"] = f"At zone — {m1_msg}"
                 return trade_state, f"At zone — {m1_msg}"
 
-        # Expired — price ran without pullback
+        # SL breached while waiting — price moved against us before entry
+        # This is the most important check — if price blows through SL we void immediately
+        sl_breached = (direction == "sell" and current_price >= sl) or                       (direction == "buy"  and current_price <= sl)
+        if sl_breached:
+            trade_state["missed_entries"] = trade_state.get("missed_entries", 0) + 1
+            trade_state["status"]         = "IDLE"
+            trade_state["state_message"]  = "Signal voided — price breached SL before entry"
+            return trade_state, "Signal voided — SL breached before entry"
+
+        # Expired — price ran too far in trade direction without giving entry
         if direction == "buy":
             too_far = current_price > entry + sl_distance * MAX_CHASE_FRACTION
         else:
@@ -885,7 +1292,7 @@ def run(b1, b2, b3, b4, b5, b6, b7, b8, b9, account_balance=10000.0):
                 b3, b4, b7, b1, b2, current_price
             )
             if entry_data:
-                tps = calculate_tps(b9["direction"], entry_data["entry"], entry_data["sl"])
+                tps = calculate_tps(b9["direction"], entry_data["entry"], entry_data["sl"], b3=b3, b2=b2, b4=b4)
                 entry_data.update(tps)  # updates sl, tp1, tp2, tp3, sl_pips, sl_distance
                 base_lot = calculate_lot_size(account_balance, RISK_PERCENT, tps["sl_pips"])
                 lot_size = max(0.01, round(base_lot * size_multiplier, 2))

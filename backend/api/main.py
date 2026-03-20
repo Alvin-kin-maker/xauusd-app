@@ -55,6 +55,7 @@ from engines.box9_confluence     import run as run_b9
 from engines.box10_trade         import run as run_b10, load_trade_state, record_trade_result
 from engines.box11_news          import run as run_b11
 from engines.box12_analytics     import run as run_b12, init_database, log_signal, log_trade_closed
+from engines.box13_breakout      import run as run_b13
 
 
 # ------------------------------------------------------------
@@ -131,13 +132,14 @@ def run_all_engines():
     b4  = run_b4(store)
     b5  = run_b5(store)
     b6  = run_b6(store)
-    b7  = run_b7(store)
-    b8  = run_b8(b1, b2, b3, b4, b5, b6, b7)
-    b9  = run_b9(b1, b2, b3, b4, b5, b6, b7, b8)
+    b7  = run_b7(store, b2)          # b2 passed for swing-anchored fibs
+    b13 = run_b13(store, b1, b2, b3, b4, b5, b7)   # breakout engine before b8
+    b8  = run_b8(b1, b2, b3, b4, b5, b6, b7, b13)  # b8 now receives b13
+    b9  = run_b9(b1, b2, b3, b4, b5, b6, b7, b8, b13)  # b9 also receives b13
     b10 = run_b10(b1, b2, b3, b4, b5, b6, b7, b8, b9, get_account_balance())
     b11 = run_b11()
     b12 = run_b12(b9, b10)
-    return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12
+    return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13
 
 
 # ------------------------------------------------------------
@@ -205,8 +207,23 @@ def get_signal():
             auto_unlock_reason = None
 
             # 1. Trade closed (SL or TP hit)
-            if trade_status in ["IDLE", "CLOSED", "COOLDOWN"]:
+            # Only unlock on IDLE if the signal has been active for at least 60 seconds
+            # Prevents race condition where signal fires then immediately reads IDLE next cycle
+            if trade_status in ["CLOSED", "COOLDOWN"]:
                 auto_unlock_reason = "trade_finished"
+            elif trade_status == "IDLE":
+                # Check signal was genuinely completed not just a timing read
+                signal_time = frozen.get("signal_time")
+                if signal_time:
+                    try:
+                        signal_dt = datetime.fromisoformat(signal_time)
+                        seconds_elapsed = (datetime.now() - signal_dt).total_seconds()
+                        if seconds_elapsed > 120:  # signal existed for 2+ mins before unlocking
+                            auto_unlock_reason = "trade_finished"
+                    except Exception:
+                        auto_unlock_reason = "trade_finished"
+                else:
+                    auto_unlock_reason = "trade_finished"
 
             # 2. Signal expired — price never reached entry within 4 hours
             elif trade_status == "SIGNAL":
@@ -219,6 +236,19 @@ def get_signal():
                             auto_unlock_reason = "signal_expired_4h"
                     except Exception:
                         pass
+
+                # SL breached while waiting for entry — void signal immediately
+                frozen_sl        = frozen.get("sl")
+                frozen_direction = frozen.get("direction")
+                tick = mt5.symbol_info_tick(SYMBOL)
+                if frozen_sl and frozen_direction and tick:
+                    live_price = tick.bid
+                    sl_breached = (
+                        (frozen_direction == "sell" and live_price >= float(frozen_sl)) or
+                        (frozen_direction == "buy"  and live_price <= float(frozen_sl))
+                    )
+                    if sl_breached:
+                        auto_unlock_reason = "sl_breached_before_entry"
 
             # 3. Active trade — price moved 3x SL distance past TP3 (full winner)
             #    OR SL hit (already covered by CLOSED status above)
@@ -288,7 +318,7 @@ def get_signal():
         # --------------------------------------------------------
         # CASE 2: No lock — run engines and look for new signal
         # --------------------------------------------------------
-        b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12 = run_all_engines()
+        b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13 = run_all_engines()
 
         # News block — warning displays but never stops market data from showing
         # should_trade is suppressed but all engine data still returns normally
@@ -300,7 +330,7 @@ def get_signal():
             log_signal(b9, b11)
 
         return safe_json_response({
-            "should_trade":    b9["should_trade"] and not news_is_blocked,
+            "should_trade":    b10["should_trade"] and not news_is_blocked,  # b10 accounts for no entry found
             "blocked":         news_is_blocked,
             "blocked_reason":  b11["block_reason"] if news_is_blocked else None,
             "score_frozen":    False,
@@ -352,7 +382,7 @@ def get_signal():
 def get_market():
     """Full market analysis — all engine outputs."""
     try:
-        b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12 = run_all_engines()
+        b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13 = run_all_engines()
 
         return safe_json_response({
             "market_context": {

@@ -348,33 +348,67 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 14),
 
-          // Model
+          // Model — breakout models get special label + icon
           if (s.modelName != null) ...[
             Row(children: [
-              Icon(Icons.auto_awesome, size: 14, color: _gold),
+              Icon(
+                (s.modelName == 'momentum_breakout' || s.modelName == 'structural_breakout')
+                    ? Icons.bolt_rounded
+                    : Icons.auto_awesome,
+                size: 14,
+                color: (s.modelName == 'momentum_breakout' || s.modelName == 'structural_breakout')
+                    ? Colors.orange
+                    : _gold,
+              ),
               const SizedBox(width: 6),
               Text(
                 s.modelName!.replaceAll('_', ' ').toUpperCase(),
                 style: TextStyle(
-                  color: _gold,
+                  color: (s.modelName == 'momentum_breakout' || s.modelName == 'structural_breakout')
+                      ? Colors.orange
+                      : _gold,
                   fontSize: 12,
                   letterSpacing: 0.8,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (!s.scoreFrozen) ...[const SizedBox(width: 8), Text('${s.validatedCount}/10 models', style: TextStyle(color: Colors.white38, fontSize: 11))],
+              if (s.modelName == 'momentum_breakout') ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                  ),
+                  child: Text('STRAIGHT SHOOTER', style: TextStyle(color: Colors.orange, fontSize: 9, letterSpacing: 0.6)),
+                ),
+              ],
+              if (s.modelName == 'structural_breakout') ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+                  ),
+                  child: Text('BOS RETEST', style: TextStyle(color: Colors.orange, fontSize: 9, letterSpacing: 0.6)),
+                ),
+              ],
+              if (!s.scoreFrozen) ...[const SizedBox(width: 8), Text('${s.validatedCount}/13 models', style: TextStyle(color: Colors.white38, fontSize: 11))],
             ]),
             const SizedBox(height: 10),
           ],
 
-          // Status
+          // Status — hide stale signal message when shouldTrade is false
           Row(children: [
-            _statusDot(s.tradeStatus),
+            _statusDot(s.shouldTrade ? s.tradeStatus : 'IDLE'),
             const SizedBox(width: 6),
             Text(
-              s.tradeStatus,
+              s.shouldTrade ? s.tradeStatus : 'IDLE',
               style: TextStyle(
-                color: _statusColor(s.tradeStatus),
+                color: _statusColor(s.shouldTrade ? s.tradeStatus : 'IDLE'),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -382,7 +416,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                s.stateMessage,
+                s.shouldTrade ? s.stateMessage : 'Scanning — no setup found',
                 style: TextStyle(color: Colors.white38, fontSize: 12),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -441,22 +475,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
 
-          // News warning
-          if (s.nextNews != null && s.minutesToNews != null) ...[
+          // News warning — only show when blocked OR within 30 mins
+          if (s.nextNews != null && s.minutesToNews != null &&
+              (s.newsBlocked || s.minutesToNews! <= 30)) ...[
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: 0.08),
+                color: (s.newsBlocked ? _bearish : Colors.orange).withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+                border: Border.all(color: (s.newsBlocked ? _bearish : Colors.orange).withValues(alpha: 0.25)),
               ),
               child: Row(children: [
-                Icon(Icons.schedule, color: Colors.orange, size: 14),
+                Icon(s.newsBlocked ? Icons.block : Icons.schedule,
+                    color: s.newsBlocked ? _bearish : Colors.orange, size: 14),
                 const SizedBox(width: 8),
                 Text(
-                  '${s.minutesToNews!.toInt()}min — ${s.nextNews}',
-                  style: TextStyle(color: Colors.orange.shade300, fontSize: 12),
+                  s.newsBlocked
+                      ? 'BLOCKED: ${s.blockedReason ?? s.nextNews}'
+                      : '${s.minutesToNews!.toInt()}min — ${s.nextNews}',
+                  style: TextStyle(
+                    color: s.newsBlocked ? _bearish : Colors.orange.shade300,
+                    fontSize: 12,
+                  ),
                 ),
               ]),
             ),
@@ -639,8 +680,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               _contextItem('HEALTH', '${s.healthScore.toInt()}%',
                   s.healthScore > 70 ? _bullish : s.healthScore > 40 ? _gold : _bearish),
-              _contextItem('SPREAD', '${s.spreadPips?.toStringAsFixed(1) ?? '—'} pip',
-                  s.spreadPips != null && s.spreadPips! < 3 ? _bullish : _bearish),
               _contextItem('ATR', s.atr?.toStringAsFixed(1) ?? '—', Colors.white70),
               _contextItem('COT', '${s.cotLongPct?.toStringAsFixed(0) ?? '—'}% L',
                   s.cotSentiment == 'bullish' ? _bullish : s.cotSentiment == 'bearish' ? _bearish : _neutral),

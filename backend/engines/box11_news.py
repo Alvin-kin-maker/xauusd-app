@@ -140,8 +140,10 @@ def fetch_forex_factory_news():
 
             try:
                 event_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                # Store as UTC naive — compare against utcnow() everywhere
-                event_time = event_time.replace(tzinfo=None)
+                # Convert to UTC properly before stripping timezone
+                # e.g. 08:30-04:00 (EDT) must become 12:30 UTC, not 08:30
+                from datetime import timezone as tz
+                event_time = event_time.astimezone(tz.utc).replace(tzinfo=None)
             except Exception:
                 continue
 
@@ -187,6 +189,18 @@ def check_news_block(events, buffer_before=None, buffer_after=None):
     next_event     = None
     minutes_to     = None
     active_event   = None
+
+    # Pre-filter stale events — drop anything older than buffer_after minutes
+    # Prevents stale cache from causing false blocks even if cache isn't cleared
+    live_events = []
+    for ev in events:
+        try:
+            ev_t = datetime.fromisoformat(ev['time'])
+            if (ev_t - now).total_seconds() / 60 >= -buffer_after:
+                live_events.append(ev)
+        except Exception:
+            pass
+    events = live_events
 
     upcoming = []
 
@@ -371,4 +385,4 @@ if __name__ == "__main__":
     print(f"\nNews Available: {result['news_available']}")
     print(f"Engine Score:   {result['engine_score']}/100")
 
-    print("\nBox 11 Test PASSED ✓")
+    print("\nBox 11 Test PASSED ✓")    
