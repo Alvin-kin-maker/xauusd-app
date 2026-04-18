@@ -11,7 +11,7 @@ import json
 import ssl
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from xml.etree import ElementTree as ET
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,8 +42,11 @@ def load_news_cache():
             with open(NEWS_CACHE_FILE, "r") as f:
                 cache = json.load(f)
                 cached_at = datetime.fromisoformat(cache.get("cached_at", "2000-01-01"))
+                # Normalise — handle both naive and aware datetimes in cache
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
                 # News cache valid for 15 minutes so passed events clear promptly
-                if datetime.now() - cached_at < timedelta(minutes=15):
+                if datetime.now(timezone.utc) - cached_at < timedelta(minutes=15):
                     return cache.get("events", [])
     except Exception:
         pass
@@ -56,7 +59,7 @@ def save_news_cache(events):
         with open(NEWS_CACHE_FILE, "w") as f:
             json.dump({
                 "events":    events,
-                "cached_at": datetime.now().isoformat()
+                "cached_at": datetime.now(timezone.utc).isoformat()
             }, f, indent=2)
     except Exception as e:
         print(f"[News] Cache save error: {e}")
@@ -81,6 +84,12 @@ HIGH_IMPACT_KEYWORDS = [
     # Major risk events
     "election",
     "war", "conflict",
+    # Trade/tariff — added after April 2 2026 tariff event blocked signals incorrectly
+    "tariff", "tariffs", "trade war", "trade policy", "liberation day",
+    "sanctions", "embargo", "trade deal", "trade agreement",
+    # Geopolitical
+    "trump", "executive order", "president",
+    "recession", "default", "debt ceiling",
 ]
 
 MEDIUM_IMPACT_KEYWORDS = [
@@ -140,10 +149,8 @@ def fetch_forex_factory_news():
 
             try:
                 event_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                # Convert to UTC properly before stripping timezone
-                # e.g. 08:30-04:00 (EDT) must become 12:30 UTC, not 08:30
-                from datetime import timezone as tz
-                event_time = event_time.astimezone(tz.utc).replace(tzinfo=None)
+                # Convert to UTC and strip tzinfo for consistent naive-UTC storage
+                event_time = event_time.astimezone(timezone.utc).replace(tzinfo=None)
             except Exception:
                 continue
 
@@ -183,7 +190,7 @@ def check_news_block(events, buffer_before=None, buffer_after=None):
     if buffer_after is None:
         buffer_after = NEWS_BUFFER_MINUTES_AFTER
 
-    now        = datetime.utcnow()  # Events stored as UTC, must compare in UTC
+    now        = datetime.now(timezone.utc).replace(tzinfo=None)  # naive UTC — matches stored event times
     is_blocked = False
     block_reason   = None
     next_event     = None
@@ -268,27 +275,47 @@ MANUAL_BLACKOUT_FILE = os.path.join(
 def check_manual_blackout():
     """
     Allow user to manually pause the system via a JSON file.
+    Auto-expires after the duration set in set_manual_blackout (default 60 min).
     """
     try:
         if os.path.exists(MANUAL_BLACKOUT_FILE):
             with open(MANUAL_BLACKOUT_FILE, "r") as f:
                 data = json.load(f)
             if data.get("active"):
+                # Check expiry — auto-clear if past expires_at
+                expires_at = data.get("expires_at")
+                if expires_at:
+                    try:
+                        exp_dt = datetime.fromisoformat(expires_at)
+                        if exp_dt.tzinfo is None:
+                            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) > exp_dt:
+                            # Auto-clear the expired blackout
+                            set_manual_blackout(False, "auto-expired")
+                            return False, None
+                    except Exception:
+                        pass
                 return True, data.get("reason", "Manual blackout active")
     except Exception:
         pass
     return False, None
 
 
-def set_manual_blackout(active, reason="Manual pause"):
-    """Toggle manual blackout on/off."""
+def set_manual_blackout(active, reason="Manual pause", duration_minutes=60):
+    """
+    Toggle manual blackout on/off.
+    duration_minutes: how long the blackout lasts before auto-expiring (default 60 min).
+    Set active=False to clear immediately regardless of expiry.
+    """
     try:
         os.makedirs(os.path.dirname(MANUAL_BLACKOUT_FILE), exist_ok=True)
+        now = datetime.now(timezone.utc)
         with open(MANUAL_BLACKOUT_FILE, "w") as f:
             json.dump({
-                "active": active,
-                "reason": reason,
-                "set_at": datetime.now().isoformat()
+                "active":     active,
+                "reason":     reason,
+                "set_at":     now.isoformat(),
+                "expires_at": (now + timedelta(minutes=duration_minutes)).isoformat() if active else None,
             }, f, indent=2)
     except Exception as e:
         print(f"[News] Manual blackout save error: {e}")
@@ -385,4 +412,4 @@ if __name__ == "__main__":
     print(f"\nNews Available: {result['news_available']}")
     print(f"Engine Score:   {result['engine_score']}/100")
 
-    print("\nBox 11 Test PASSED ✓")    
+    print("\nBox 11 Test PASSED ✓")

@@ -1,51 +1,15 @@
 {
-  "locked": true,
-  "direction": "sell",
-  "model_name": "structural_breakout",
-  "frozen_score": 73.1,
-  "frozen_grade": "STRONG",
-  "validated_count": 4,
-  "frozen_engines": {
-    "market_context": {
-      "raw": 92,
-      "contribution": 9.2
-    },
-    "trend": {
-      "raw": 79,
-      "contribution": 15.8
-    },
-    "liquidity": {
-      "raw": 25,
-      "contribution": 3.8
-    },
-    "levels": {
-      "raw": 68,
-      "contribution": 6.8
-    },
-    "momentum": {
-      "raw": 40,
-      "contribution": 4.0
-    },
-    "sentiment": {
-      "raw": 85,
-      "contribution": 8.5
-    },
-    "entry": {
-      "raw": 100,
-      "contribution": 10.0
-    },
-    "model": {
-      "raw": 100,
-      "contribution": 15.0
-    }
-  },
-  "signal_time": "2026-03-20T18:06:04.770159",
-  "entry": 4571.68,
-  "sl": 4593.95,
-  "tp1": 4502.57,
-  "tp2": 4500.0,
-  "tp3": 4478.55,
-  "sl_pips": 222.7,
-  "lot_size": 0.13,
-  "entry_zone": "Structural Breakout"
+  "locked": false,
+  "direction": null,
+  "model_name": null,
+  "frozen_score": null,
+  "frozen_grade": null,
+  "frozen_engines": null,
+  "signal_time": null,
+  "entry": null,
+  "sl": null,
+  "tp1": null,
+  "tp2": null,
+  "tp3": null,
+  "lot_size": null
 }

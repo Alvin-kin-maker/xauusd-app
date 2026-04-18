@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "period": {
+      "from": "2026-03-25",
+      "to": "2026-03-31"
+    },
+    "total_signals": 1,
+    "filled": 1,
+    "wins": 0,
+    "losses": 1,
+    "win_rate": 0.0,
+    "sl_rate": 100.0,
+    "net_pnl_pips": -158.7,
+    "avg_win": 0.0,
+    "avg_loss": -158.7,
+    "expectancy": -158.7,
+    "rr_ratio": 0.0,
+    "ghost_rate": 0.0
+  },
+  "trades": [
+    {
+      "time": "2026-03-31 12:30:00",
+      "date": "2026-03-31",
+      "session": "london",
+      "direction": "buy",
+      "model": "silver_bullet",
+      "score": 71.0,
+      "grade": "STRONG",
+      "should_trade": true,
+      "kill_switches": [],
+      "price": 4557.93,
+      "price_zone": "premium",
+      "sweep": "bullish",
+      "sweep_fresh": true,
+      "rsi_m15": 50.55,
+      "cot_pct": 80.7,
+      "atr": 30.74099,
+      "news_blocked": false,
+      "news_reason": null,
+      "entry": 4557.13,
+      "sl": 4541.26,
+      "sl_pips": 158.7,
+      "tp1": 4600.0,
+      "tp2": 4629.88,
+      "tp3": 4693.6,
+      "result": "SL_HIT",
+      "pnl_pips": -158.7,
+      "bars_held": 67,
+      "exit_time": "2026-03-31 13:38:00",
+      "tp1_hit": false,
+      "tp2_hit": false,
+      "tag": "LOSS"
+    }
+  ]
+}

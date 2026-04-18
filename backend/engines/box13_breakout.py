@@ -5,6 +5,7 @@
 #   Type 2 — Momentum Breakout: straight shooter, no retest
 # Uses data from B1 (ATR), B2 (BOS/structure), B3 (liquidity),
 #         B4 (levels), B5 (volume), B7 (OBs/FVGs)
+# FIX: Added H1 consolidation detection
 # ============================================================
 
 import sys
@@ -305,6 +306,36 @@ def detect_structural_breakout(b2, b3, b4, b5, b1, current_price):
 
     validated = score >= 60 and fresh_bos and not too_far
 
+    # ============================================================
+    # FIX: ADDED "NO RETEST" FLAG — Let momentum breakout handle running moves
+    # ============================================================
+    # If price moved significantly away from retest zone (more than 15 pips)
+    # without retesting, return a special flag so momentum breakout can handle it
+    if direction == "sell" and current_price < float(bos_level) - 1.5:
+        # Price dropped 15+ pips below BOS level without retest
+        return {
+            "type": "no_retest",
+            "should_use_momentum": True,
+            "direction": direction,
+            "bos_level": bos_level,
+            "current_price": current_price,
+            "score": min(score, 100),
+            "validated": False,  # Not a valid structural entry
+            "reasons": reasons + ["No retest — momentum breakout should handle this"],
+        }
+    elif direction == "buy" and current_price > float(bos_level) + 1.5:
+        # Price rose 15+ pips above BOS level without retest
+        return {
+            "type": "no_retest",
+            "should_use_momentum": True,
+            "direction": direction,
+            "bos_level": bos_level,
+            "current_price": current_price,
+            "score": min(score, 100),
+            "validated": False,
+            "reasons": reasons + ["No retest — momentum breakout should handle this"],
+        }
+
     return {
         "type":              "structural_breakout",
         "direction":         direction,
@@ -518,12 +549,16 @@ def run(candle_store, b1, b2, b3, b4, b5, b7):
     """
     df_m5  = candle_store.get_closed("M5")
     df_m15 = candle_store.get_closed("M15")
+    df_h1  = candle_store.get_closed("H1")  # Added for H1 consolidation
 
     price_info    = candle_store.get_price()
     current_price = float(price_info["bid"]) if price_info else 0.0
 
     # Consolidation check on M15
     consolidation = detect_consolidation(df_m15, lookback=20)
+
+    # Consolidation check on H1 (NEW for kill switch)
+    h1_consolidation = detect_consolidation(df_h1, lookback=20)
 
     # Displacement scoring on M5 (latest candle)
     displacement = score_displacement(df_m5, b1, b5)
@@ -537,7 +572,7 @@ def run(candle_store, b1, b2, b3, b4, b5, b7):
     )
 
     # Overall breakout active?
-    structural_active = structural is not None and structural["validated"]
+    structural_active = structural is not None and structural.get("validated", False)
     momentum_active   = momentum   is not None and momentum["validated"]
     any_breakout      = structural_active or momentum_active
 
@@ -550,6 +585,7 @@ def run(candle_store, b1, b2, b3, b4, b5, b7):
 
     return {
         "consolidation":       consolidation,
+        "h1_consolidation":    h1_consolidation,  # NEW: H1 consolidation for kill switch
         "displacement":        displacement,
         "structural_breakout": structural,
         "momentum_breakout":   momentum,

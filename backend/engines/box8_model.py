@@ -456,9 +456,20 @@ def model_liquidity_grab_bos(b1, b2, b3, b4, b5, b6, b7):
         score += 10
         reasons.append("Breaker block present ✓")
 
+    # Require H1 CHOCH: confirms the reversal is structural, not just a bounce
+    # Without H1 CHOCH, the sweep may be within a continuing trend (buys that hit SL)
+    # H1 CHOCH = market structure shift on H1 = genuine reversal signal
+    h1_choch_active = b2["timeframes"]["H1"].get("choch_active", False)
+    if h1_choch_active:
+        score += 15
+        reasons.append("H1 CHOCH confirms reversal ✓")
+    else:
+        reasons.append("No H1 CHOCH — may be bounce only ✗")
+
     validated = (
         good_session and
         (sharp_sweep or major_swept) and
+        h1_choch_active and
         score >= 65
     )
 

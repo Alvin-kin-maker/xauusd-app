@@ -13,6 +13,7 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import (
     OB_MAX_ATR_MULTIPLIER,
+    OB_MIN_ATR_MULTIPLIER,
     OB_SWING_LENGTH,
     FVG_MIN_SIZE,
     FIB_LEVELS,
@@ -112,8 +113,14 @@ def find_order_blocks(df, atr=None, swing_length=None):
 
         ob_size = ob_high - ob_low
 
-        # Filter: OB must not be too large
+        # Filter: OB must not be too large (avoids wide, undefined zones)
         if ob_size > atr * OB_MAX_ATR_MULTIPLIER:
+            continue
+
+        # Filter: OB must not be too small (avoids noise-level zones)
+        # Minimum 0.3x ATR = e.g. with ATR=25pts, min OB = 7.5pts = 75pip
+        # This prevents 25-pip OBs that generate SLs that get hit by noise
+        if ob_size < atr * OB_MIN_ATR_MULTIPLIER:
             continue
 
         # Check if OB has been mitigated (price returned to it)

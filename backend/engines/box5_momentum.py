@@ -446,28 +446,47 @@ def run(candle_store):
     # ------------------------------------------------------------
     score = 0
 
-    # RSI signal strength
+    # H1 RSI — primary momentum read
     if rsi_h1_signal in ["overbought", "oversold"]:
-        score += 30
+        score += 35       # Extreme = strong signal
     elif rsi_h1_signal in ["bullish", "bearish"]:
-        score += 20
+        score += 25       # Directional = good
+    elif rsi_h1_val is not None:
+        # Neutral band but still give baseline credit for side of midline
+        # Markets spend a lot of time in 45-55 — this shouldn't score zero
+        if rsi_h1_val > RSI_MIDLINE:
+            score += 15
+        elif rsi_h1_val < RSI_MIDLINE:
+            score += 15
 
+    # M15 RSI — entry timing confirmation
     if rsi_m15_signal in ["overbought", "oversold"]:
-        score += 20
+        score += 25
     elif rsi_m15_signal in ["bullish", "bearish"]:
-        score += 10
+        score += 15
+    elif rsi_m15_val is not None:
+        if rsi_m15_val > RSI_MIDLINE:
+            score += 10
+        elif rsi_m15_val < RSI_MIDLINE:
+            score += 10
+
+    # M5 RSI — minor bonus for LTF alignment
+    if rsi_m5_signal in ["bullish", "bearish", "overbought", "oversold"]:
+        score += 5
+    elif rsi_m5_val is not None and rsi_m5_val != RSI_MIDLINE:
+        score += 3
 
     # Divergence bonus
     if divergence_active:
-        score += 30
+        score += 20
         if "regular" in (divergence_type or ""):
-            score += 10  # Regular divergence = stronger signal
+            score += 10   # Regular divergence = stronger signal
 
     # Volume confirmation
     if vol_m15["is_spike"]:
-        score += 15
+        score += 10
     if vol_m15["is_declining"]:
-        score += 10  # Declining volume on pullback = good
+        score += 5        # Declining volume on pullback = good
 
     score = min(score, 100)
 

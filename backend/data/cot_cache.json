@@ -1,16 +1,16 @@
 {
-  "managed_money_long": 215445,
-  "managed_money_short": 52313,
-  "net_position": 163132,
-  "net_change": 184439,
-  "long_pct": 80.5,
-  "commercial_long": 85280,
-  "commercial_short": 288256,
-  "commercial_net": -202976,
+  "managed_money_long": 205368,
+  "managed_money_short": 49063,
+  "net_position": 156305,
+  "net_change": 169482,
+  "long_pct": 80.7,
+  "commercial_long": 57729,
+  "commercial_short": 251480,
+  "commercial_net": -193751,
   "commercial_bias": "bullish",
   "sentiment": "bullish",
-  "report_date": "2026-03-10",
+  "report_date": "2026-04-07",
   "source": "CFTC",
   "available": true,
-  "cached_at": "2026-03-19T16:38:16.803852"
+  "cached_at": "2026-04-14T18:19:44.900591"
 }

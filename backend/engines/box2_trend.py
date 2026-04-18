@@ -246,6 +246,7 @@ def detect_choch(df, swing_highs, swing_lows, market_structure):
                 })
                 break
 
+    return choch_events  # ← FIX: was missing, causing detect_choch to always return None
 
 
 # ------------------------------------------------------------
@@ -312,8 +313,6 @@ def detect_mss(df, swing_highs, swing_lows, lookback=3):
 
     mss_events.sort(key=lambda x: x["broken_at"])
     return mss_events
-
-    return choch_events
 
 
 # ------------------------------------------------------------
@@ -429,7 +428,8 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
         "mss":            mss_events[-2:] if mss_events else [],
         "mss_active":     mss_active,
         "mss_type":       mss_type,
-        "score":          score
+        "score":          score,
+        "candle_count":   len(df),   # needed by box9 D1 exhaustion recency check
     }
 
 

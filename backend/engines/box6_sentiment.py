@@ -4,6 +4,7 @@
 # Tools: COT Report, Open Interest, Retail Sentiment
 # Sources: CFTC via cot_reports library
 # Note: COT updates every Friday. This engine caches it.
+# FIX: Added staleness check — data >7 days old = unavailable
 # ============================================================
 
 import sys
@@ -28,9 +29,7 @@ def load_cot_cache():
         if os.path.exists(COT_CACHE_FILE):
             with open(COT_CACHE_FILE, "r") as f:
                 cache = json.load(f)
-                cached_at = datetime.fromisoformat(cache.get("cached_at", "2000-01-01"))
-                if datetime.now() - cached_at < timedelta(days=7):
-                    return cache
+                return cache
     except Exception as e:
         print(f"[Sentiment] Cache load error: {e}")
     return None
@@ -44,6 +43,21 @@ def save_cot_cache(data):
             json.dump(data, f, indent=2)
     except Exception as e:
         print(f"[Sentiment] Cache save error: {e}")
+
+
+def is_cot_stale(cache):
+    """Check if COT data is older than 7 days (weekly report should be fresh)."""
+    if not cache:
+        return True
+    cached_at = cache.get("cached_at")
+    if not cached_at:
+        return True
+    try:
+        cache_time = datetime.fromisoformat(cached_at)
+        # COT reports every Friday, data is valid for 7 days
+        return (datetime.now() - cache_time).days > 7
+    except Exception:
+        return True
 
 
 def get_default_sentiment():
@@ -72,12 +86,18 @@ def fetch_cot_data():
     """
     Fetch COT data for Gold using cot_reports library.
     Caches result for 7 days since COT updates weekly.
+    Now with staleness check — if data >7 days old, treat as unavailable.
     """
     cached = load_cot_cache()
-    if cached:
-        print("[Sentiment] Using cached COT data")
+    
+    # Check if cached data is fresh
+    if cached and not is_cot_stale(cached):
+        print("[Sentiment] Using cached COT data (fresh)")
+        cached["available"] = True
         return cached
-
+    elif cached:
+        print("[Sentiment] Cached COT data is stale (>7 days old) — fetching fresh")
+    
     print("[Sentiment] Fetching fresh COT data...")
 
     try:
@@ -174,7 +194,10 @@ def analyze_open_interest(candle_store):
     recent      = df_h1.iloc[-5:]
     price_change = recent["close"].iloc[-1] - recent["close"].iloc[0]
     price_trend  = "up" if price_change > 0 else "down"
-    vol_change   = recent["volume"].iloc[-1] - recent["volume"].iloc[0]
+    # Cast to Python float to avoid numpy integer overflow on large volume values
+    vol_last     = float(recent["volume"].iloc[-1])
+    vol_first    = float(recent["volume"].iloc[0])
+    vol_change   = vol_last - vol_first
     vol_trend    = "rising" if vol_change > 0 else "falling"
 
     if price_trend == "up" and vol_trend == "rising":

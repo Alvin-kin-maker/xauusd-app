@@ -113,6 +113,7 @@ VOLUME_DECLINING_THRESHOLD = 0.7   # Volume below 70% of average = declining
 # BOX 7 — ENTRY ENGINE
 # ------------------------------------------------------------
 OB_MAX_ATR_MULTIPLIER = 3.5        # Max OB size relative to ATR
+OB_MIN_ATR_MULTIPLIER = 0.3        # Min OB size relative to ATR (filters noise-level OBs)
 OB_SWING_LENGTH = 10               # Swing length for OB detection
 FVG_MIN_SIZE = 0.2                 # Minimum FVG size in pips
 FIB_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.705, 0.786]

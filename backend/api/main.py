@@ -126,19 +126,102 @@ def safe_float(val):
 
 
 def run_all_engines():
+    """
+    Run all 13 engines with per-engine error isolation.
+    If any engine crashes, it logs the error and returns a safe fallback
+    so the API never returns 500 due to a single engine failure.
+    """
+    import traceback
+
+    def safe_run(name, fn, *args, fallback=None):
+        try:
+            return fn(*args)
+        except Exception as e:
+            tb = traceback.format_exc()
+            print(f"[ENGINE ERROR] {name} crashed: {type(e).__name__}: {e}")
+            print(tb)
+            if fallback is not None:
+                return fallback
+            raise  # re-raise for critical engines (b1, b2, b9, b10)
+
     b1  = run_b1(store)
     b2  = run_b2(store)
-    b3  = run_b3(store)
-    b4  = run_b4(store)
-    b5  = run_b5(store)
-    b6  = run_b6(store)
-    b7  = run_b7(store, b2)          # b2 passed for swing-anchored fibs
-    b13 = run_b13(store, b1, b2, b3, b4, b5, b7)   # breakout engine before b8
-    b8  = run_b8(b1, b2, b3, b4, b5, b6, b7, b13)  # b8 now receives b13
-    b9  = run_b9(b1, b2, b3, b4, b5, b6, b7, b8, b13)  # b9 also receives b13
+    b3  = safe_run("box3_liquidity", run_b3, store,
+                   fallback={"engine_score":0,"sweep_just_happened":False,"sweep_direction":"",
+                             "total_sweeps":0,"pdh_swept":False,"pdl_swept":False,
+                             "asian_high_swept":False,"asian_low_swept":False,
+                             "bsl_levels":[],"ssl_levels":[],"eqh_levels":[],"eql_levels":[],
+                             "nearest_bsl":None,"nearest_ssl":None,
+                             "asian_high":None,"asian_low":None,"pdh":None,"pdl":None,
+                             "pwh":None,"pwl":None,"pwh_swept":False,"pwl_swept":False,
+                             "eqh_count":0,"eql_count":0})
+    b4  = safe_run("box4_levels", run_b4, store,
+                   fallback={"engine_score":0,"current_price":None,"price_zone":"unknown",
+                             "equilibrium":None,"in_ote":False,"in_buy_ote":False,"in_sell_ote":False,
+                             "at_key_level":False,"closest_level":None,"all_levels":[],
+                             "pivot_pp":None,"pivot_r1":None,"pivot_r2":None,"pivot_r3":None,
+                             "pivot_s1":None,"pivot_s2":None,"pivot_s3":None,
+                             "weekly_pp":None,"weekly_r1":None,"weekly_r2":None,
+                             "weekly_s1":None,"weekly_s2":None,"weekly_s3":None,
+                             "monthly_pp":None,"monthly_r1":None,"monthly_r2":None,
+                             "monthly_s1":None,"monthly_s2":None,"monthly_s3":None,
+                             "vwap":None,"nwog":None,"ndog":None,"nwog_ce":None,"ndog_ce":None})
+    b5  = safe_run("box5_momentum", run_b5, store,
+                   fallback={"engine_score":0,"rsi_h1":50,"rsi_m15":50,"rsi_m5":50,
+                             "rsi_h1_signal":"neutral","rsi_m15_signal":"neutral","rsi_m5_signal":"neutral",
+                             "rsi_above_mid_m15":False,"rsi_above_mid_h1":False,
+                             "divergence_active":False,"divergence_type":None,"recent_divergence":None,
+                             "divergences_m15":[],"divergences_h1":[],"momentum_direction":"neutral",
+                             "volume_m15":{"is_spike":False,"is_declining":False,"relative_volume":1.0,
+                                          "current_volume":0,"avg_volume":0,"volume_trend":"normal"},
+                             "volume_h1":{"is_spike":False,"is_declining":False,"relative_volume":1.0,
+                                         "current_volume":0,"avg_volume":0,"volume_trend":"normal"},
+                             "volume_m5":{"is_spike":False,"is_declining":False,"relative_volume":1.0,
+                                         "current_volume":0,"avg_volume":0,"volume_trend":"normal"}})
+    b6  = safe_run("box6_sentiment", run_b6, store,
+                   fallback={"engine_score":0,"cot_sentiment":"neutral","cot_long_pct":50.0,
+                             "cot_net_position":0,"cot_net_change":0,"cot_available":False,
+                             "oi_signal":"neutral","oi_trend":"neutral",
+                             "retail_long_pct":50.0,"contrarian_signal":"neutral",
+                             "overall_sentiment":"neutral",
+                             "cot":{"long_pct":50,"sentiment":"neutral","available":False,
+                                    "net_position":0,"net_change":0,"report_date":None,
+                                    "commercial_bias":"neutral","managed_money_long":0,
+                                    "managed_money_short":0,"commercial_long":0,
+                                    "commercial_short":0,"commercial_net":0,"source":"fallback"},
+                             "oi":{"oi_signal":"neutral","oi_trend":"neutral","price_trend":"neutral",
+                                   "vol_trend":"neutral","available":False},
+                             "retail":{"retail_long_pct":50,"contrarian_signal":"neutral","available":False}})
+    b7  = safe_run("box7_entry", run_b7, store, b2,
+                   fallback={"engine_score":0,"entry_bias":"neutral",
+                             "bull_ob_count":0,"bear_ob_count":0,"bull_fvg_count":0,"bear_fvg_count":0,
+                             "at_bull_ob":False,"at_bear_ob":False,"at_bull_fvg":False,"at_bear_fvg":False,
+                             "at_bull_breaker":False,"at_bear_breaker":False,
+                             "bull_breakers":[],"bear_breakers":[],"price_at_entry_zone":False,
+                             "pattern_count":0,"candle_patterns":[],"patterns":[],
+                             "bullish_obs":[],"bearish_obs":[],"bullish_fvgs":[],"bearish_fvgs":[],
+                             "fibs":[],"golden_fibs":[],"fib_direction":"buy","in_ote":False,
+                             "ote_direction":"buy","ote_m15":{"in_ote":False,"in_buy_ote":False,
+                             "in_sell_ote":False,"ote_direction":"buy","swing_high":None,"swing_low":None,
+                             "ote_618":None,"ote_705":None,"ote_79":None,
+                             "sell_ote_618":None,"sell_ote_705":None,"sell_ote_79":None}})
+    b13 = safe_run("box13_breakout", run_b13, store, b1, b2, b3, b4, b5, b7,
+                   fallback={"consolidation":{"was_consolidating":False,"range_high":None,
+                                              "range_low":None,"range_size":None},
+                             "h1_consolidation":{"was_consolidating":False},
+                             "best_breakout":None,"breakouts":[]})
+    b8  = safe_run("box8_model", run_b8, b1, b2, b3, b4, b5, b6, b7, b13,
+                   fallback={"engine_score":0,"active_model":None,"best_model_name":None,
+                             "best_model_score":0,"validated_count":0,"model_validated":False,
+                             "all_models":{},"validated_models":{},"total_models":13})
+    b9  = run_b9(b1, b2, b3, b4, b5, b6, b7, b8, b13)
     b10 = run_b10(b1, b2, b3, b4, b5, b6, b7, b8, b9, get_account_balance())
-    b11 = run_b11()
-    b12 = run_b12(b9, b10)
+    b11 = safe_run("box11_news", run_b11,
+                   fallback={"is_blocked":False,"block_reason":None,"next_event":None,
+                             "minutes_to_next":None,"events_today":[]})
+    b12 = safe_run("box12_analytics", run_b12, b9, b10,
+                   fallback={"health_score":100,"stats_30d":{"winrate":0,"total_trades":0},
+                             "stats_7d":{"winrate":0,"total_trades":0}})
     return b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13
 
 
@@ -212,18 +295,33 @@ def get_signal():
             if trade_status in ["CLOSED", "COOLDOWN"]:
                 auto_unlock_reason = "trade_finished"
             elif trade_status == "IDLE":
-                # Check signal was genuinely completed not just a timing read
-                signal_time = frozen.get("signal_time")
-                if signal_time:
-                    try:
-                        signal_dt = datetime.fromisoformat(signal_time)
-                        seconds_elapsed = (datetime.now() - signal_dt).total_seconds()
-                        if seconds_elapsed > 120:  # signal existed for 2+ mins before unlocking
-                            auto_unlock_reason = "trade_finished"
-                    except Exception:
-                        auto_unlock_reason = "trade_finished"
+                # GUARD: Never auto-unlock from IDLE if MT5 still has an open position.
+                # This prevents the signal disappearing mid-trade when box10 briefly
+                # returns IDLE due to an MT5 disconnect, crash, or state machine glitch.
+                mt5_has_open_position = False
+                try:
+                    open_positions = mt5.positions_get(symbol=SYMBOL)
+                    if open_positions and len(open_positions) > 0:
+                        mt5_has_open_position = True
+                except Exception:
+                    pass  # If MT5 fails, assume safe and do NOT unlock
+
+                if mt5_has_open_position:
+                    # MT5 still has a trade open — do not unlock, just log
+                    print("[Signal] Auto-unlock blocked — MT5 has open position on XAUUSD")
                 else:
-                    auto_unlock_reason = "trade_finished"
+                    # No open positions in MT5 — safe to check if signal genuinely finished
+                    signal_time = frozen.get("signal_time")
+                    if signal_time:
+                        try:
+                            signal_dt = datetime.fromisoformat(signal_time)
+                            seconds_elapsed = (datetime.now() - signal_dt).total_seconds()
+                            if seconds_elapsed > 120:  # signal existed for 2+ mins before unlocking
+                                auto_unlock_reason = "trade_finished"
+                        except Exception:
+                            auto_unlock_reason = "trade_finished"
+                    else:
+                        auto_unlock_reason = "trade_finished"
 
             # 2. Signal expired — price never reached entry within 4 hours
             elif trade_status == "SIGNAL":
@@ -256,6 +354,29 @@ def get_signal():
             if auto_unlock_reason:
                 unlock_signal(auto_unlock_reason)
                 frozen = None
+                # Return immediately after unlock — don't search for new signal same cycle
+                # This prevents instant re-lock after expiry/SL breach
+                b1  = run_b1(store)
+                b11 = run_b11()
+                b12 = run_b12()
+                tick = mt5.symbol_info_tick(SYMBOL)
+                return safe_json_response({
+                    "should_trade":    False,
+                    "score_frozen":    False,
+                    "direction":       "none",
+                    "grade":           "NO_TRADE",
+                    "score":           0,
+                    "signal_summary":  f"Signal cleared ({auto_unlock_reason}) — scanning next cycle",
+                    "trade_status":    "IDLE",
+                    "state_message":   f"Cleared: {auto_unlock_reason}",
+                    "session":         b1["primary_session"],
+                    "atr":             safe_float(b1["atr"]),
+                    "spread_pips":     safe_float(b1["spread_pips"]),
+                    "volatility":      b1["volatility_regime"],
+                    "news_blocked":    b11["is_blocked"],
+                    "health_score":    b12["health_score"],
+                    "time":            datetime.now().isoformat(),
+                })
             else:
                 # Serve frozen signal + live context (session/COT still live)
                 b1  = run_b1(store)
@@ -324,8 +445,9 @@ def get_signal():
         # should_trade is suppressed but all engine data still returns normally
         news_is_blocked = b11["is_blocked"]
 
-        # Only lock/fire signal if news is clear
-        if not news_is_blocked and b9["should_trade"] and b10["trade_status"] in ["SIGNAL", "ACTIVE"]:
+        # Only lock/fire signal if news is clear AND not already locked
+        # is_locked() check prevents overwriting an active signal mid-trade
+        if not news_is_blocked and not is_locked() and b9["should_trade"] and b10["trade_status"] in ["SIGNAL", "ACTIVE"]:
             lock_signal(b9, b10, b8)
             log_signal(b9, b11)
 

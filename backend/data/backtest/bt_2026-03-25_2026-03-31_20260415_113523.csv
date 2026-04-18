@@ -1,0 +1,2 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-03-31 12:30:00,2026-03-31,london,buy,silver_bullet,71.0,STRONG,True,[],4557.93,premium,bullish,True,50.55,80.7,30.74099,False,,4557.13,4541.26,158.7,4600.0,4629.88,4693.6,SL_HIT,-158.7,67,2026-03-31 13:38:00,False,False,LOSS

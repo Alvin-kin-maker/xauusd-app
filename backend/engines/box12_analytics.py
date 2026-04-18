@@ -135,9 +135,33 @@ def init_database():
 # ------------------------------------------------------------
 
 def log_signal(b9, b11, blocked=False, blocked_reason=None):
-    """Log every signal generated — traded or not."""
+    """
+    Log every signal generated — traded or not.
+    DEDUP: skip if same direction + model was logged within 5 minutes.
+    Prevents 20 identical rows when a setup persists across poll cycles.
+    """
     conn = get_db_connection()
     try:
+        # Check for duplicate within last 5 minutes
+        row = conn.execute("""
+            SELECT created_at FROM signals
+            WHERE direction = ? AND model_name = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (
+            b9.get("direction"),
+            b9.get("model_name"),
+        )).fetchone()
+
+        if row:
+            try:
+                last_logged = datetime.fromisoformat(row[0])
+                seconds_since = (datetime.now() - last_logged).total_seconds()
+                if seconds_since < 300:  # 5 minute cooldown per direction+model
+                    return  # Same signal still active — skip duplicate log
+            except Exception:
+                pass
+
         conn.execute("""
             INSERT INTO signals
             (signal_time, direction, model_name, confluence_score, grade,

@@ -1,96 +1,68 @@
 {
   "events": [
     {
-      "title": "Empire State Manufacturing Index",
-      "currency": "USD",
-      "impact": "medium",
-      "time": "2026-03-16T12:30:00",
-      "time_str": "2026-03-16 12:30"
-    },
-    {
-      "title": "President Trump Speaks",
-      "currency": "USD",
-      "impact": "medium",
-      "time": "2026-03-16T15:30:00",
-      "time_str": "2026-03-16 15:30"
-    },
-    {
-      "title": "Pending Home Sales m/m",
-      "currency": "USD",
-      "impact": "medium",
-      "time": "2026-03-17T14:00:00",
-      "time_str": "2026-03-17 14:00"
-    },
-    {
       "title": "Core PPI m/m",
       "currency": "USD",
       "impact": "high",
-      "time": "2026-03-18T12:30:00",
-      "time_str": "2026-03-18 12:30"
+      "time": "2026-04-14T12:30:00",
+      "time_str": "2026-04-14 12:30"
     },
     {
       "title": "PPI m/m",
       "currency": "USD",
       "impact": "high",
-      "time": "2026-03-18T12:30:00",
-      "time_str": "2026-03-18 12:30"
+      "time": "2026-04-14T12:30:00",
+      "time_str": "2026-04-14 12:30"
     },
     {
-      "title": "Federal Funds Rate",
+      "title": "President Trump Speaks",
       "currency": "USD",
-      "impact": "high",
-      "time": "2026-03-18T18:00:00",
-      "time_str": "2026-03-18 18:00"
+      "impact": "medium",
+      "time": "2026-04-15T10:00:00",
+      "time_str": "2026-04-15 10:00"
     },
     {
-      "title": "FOMC Economic Projections",
+      "title": "Empire State Manufacturing Index",
       "currency": "USD",
-      "impact": "high",
-      "time": "2026-03-18T18:00:00",
-      "time_str": "2026-03-18 18:00"
-    },
-    {
-      "title": "FOMC Statement",
-      "currency": "USD",
-      "impact": "high",
-      "time": "2026-03-18T18:00:00",
-      "time_str": "2026-03-18 18:00"
-    },
-    {
-      "title": "FOMC Press Conference",
-      "currency": "USD",
-      "impact": "high",
-      "time": "2026-03-18T18:30:00",
-      "time_str": "2026-03-18 18:30"
-    },
-    {
-      "title": "Unemployment Claims",
-      "currency": "USD",
-      "impact": "high",
-      "time": "2026-03-19T12:30:00",
-      "time_str": "2026-03-19 12:30"
+      "impact": "medium",
+      "time": "2026-04-15T12:30:00",
+      "time_str": "2026-04-15 12:30"
     },
     {
       "title": "Philly Fed Manufacturing Index",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-03-19T12:30:00",
-      "time_str": "2026-03-19 12:30"
+      "time": "2026-04-16T12:30:00",
+      "time_str": "2026-04-16 12:30"
     },
     {
-      "title": "New Home Sales",
+      "title": "Unemployment Claims",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-03-19T14:00:00",
-      "time_str": "2026-03-19 14:00"
+      "time": "2026-04-16T12:30:00",
+      "time_str": "2026-04-16 12:30"
     },
     {
-      "title": "Fed Chair Powell Speaks",
+      "title": "President Trump Speaks",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-03-21T17:30:00",
-      "time_str": "2026-03-21 17:30"
+      "time": "2026-04-16T23:00:00",
+      "time_str": "2026-04-16 23:00"
+    },
+    {
+      "title": "FOMC Member Waller Speaks",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-04-17T18:00:00",
+      "time_str": "2026-04-17 18:00"
+    },
+    {
+      "title": "President Trump Speaks",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-04-17T21:00:00",
+      "time_str": "2026-04-17 21:00"
     }
   ],
-  "cached_at": "2026-03-20T18:12:55.622081"
+  "cached_at": "2026-04-18T14:57:25.642752+00:00"
 }
