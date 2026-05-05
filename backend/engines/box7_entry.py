@@ -645,9 +645,13 @@ def detect_candlestick_patterns(df):
 # PRICE AT ZONE CHECK
 # ------------------------------------------------------------
 
-def price_at_zone(current_price, zones, proximity=5.0):
+def price_at_zone(current_price, zones, proximity=1.0):
     """
     Check if current price is inside or near any zone.
+    proximity is in price points. Default 1.0 = 10 pips.
+    Use ATR-based proximity when calling: atr * 0.15 = ~15% of ATR.
+    This ensures 'at zone' means price is genuinely touching it,
+    not just within 50 pips of it.
     Returns the zone if price is at it, None otherwise.
     """
     if current_price is None or not zones:
@@ -657,7 +661,6 @@ def price_at_zone(current_price, zones, proximity=5.0):
         top    = zone.get("top",    0)
         bottom = zone.get("bottom", 0)
 
-        # Price inside zone
         if bottom - proximity <= current_price <= top + proximity:
             return zone
 
@@ -761,13 +764,19 @@ def run(candle_store, b2=None):
     in_ote  = ote_m15["in_ote"] or ote_h1["in_ote"]
     ote_direction = ote_m15["ote_direction"] or ote_h1["ote_direction"]
 
+    # ATR-based proximity: price must be within 15% of ATR to count as "at zone"
+    # ATR ~17 points in Jan → proximity = 2.55 points = 25 pips
+    # This is tight enough that price genuinely needs to be touching the zone
+    _atr_b7 = get_atr(df_m15) if df_m15 is not None and len(df_m15) >= 14 else 2.0
+    _prox   = max(_atr_b7 * 0.15, 0.5)  # min 5 pips, scales with volatility
+
     # --- Check if price is at any zone ---
-    at_bull_ob      = price_at_zone(current_price, valid_bull_obs)
-    at_bear_ob      = price_at_zone(current_price, valid_bear_obs)
-    at_bull_fvg     = price_at_zone(current_price, valid_bull_fvgs)
-    at_bear_fvg     = price_at_zone(current_price, valid_bear_fvgs)
-    at_bull_breaker = price_at_zone(current_price, bull_breakers)
-    at_bear_breaker = price_at_zone(current_price, bear_breakers)
+    at_bull_ob      = price_at_zone(current_price, valid_bull_obs, _prox)
+    at_bear_ob      = price_at_zone(current_price, valid_bear_obs, _prox)
+    at_bull_fvg     = price_at_zone(current_price, valid_bull_fvgs, _prox)
+    at_bear_fvg     = price_at_zone(current_price, valid_bear_fvgs, _prox)
+    at_bull_breaker = price_at_zone(current_price, bull_breakers, _prox)
+    at_bear_breaker = price_at_zone(current_price, bear_breakers, _prox)
 
     price_at_entry_zone = any([
         at_bull_ob, at_bear_ob,

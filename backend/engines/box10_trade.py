@@ -691,14 +691,48 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
     # ── BREAKOUT MODELS ─────────────────────────────────────────────
     if model_name == "momentum_breakout":
         atr = float(b1.get("atr") or 2.0)
-        if direction == "sell":
+        buf = round(max(atr * 0.1, 0.3), 2)  # small buffer beyond structure
+
+        if direction == "buy":
             entry = round(current_price - 0.3, 2)
-            sl    = round(current_price + max(atr * 0.3, 0.3), 2)
-            return _make_zone(entry, sl, current_price, sl, "Momentum Breakout (Sell)")
-        elif direction == "buy":
-            entry = round(current_price + 0.3, 2)
-            sl    = round(current_price - max(atr * 0.3, 0.3), 2)
+            # SL: below the M15 swing low — actual structure, not arbitrary ATR
+            # Cap: SL must be within 3x ATR of entry — prevents using ancient swing lows
+            sl = None
+            m15_sl = b2.get("timeframes", {}).get("M15", {}).get("last_sl")
+            if m15_sl:
+                m15_sl_price = float(m15_sl["price"]) if isinstance(m15_sl, dict) else float(m15_sl)
+                if m15_sl_price < entry and (entry - m15_sl_price) <= atr * 1.5:
+                    sl = round(m15_sl_price - buf, 2)
+            # Fallback: H1 swing low, capped at 1.5x ATR
+            if not sl:
+                h1_sl = b2.get("timeframes", {}).get("H1", {}).get("last_sl")
+                if h1_sl:
+                    h1_sl_price = float(h1_sl["price"]) if isinstance(h1_sl, dict) else float(h1_sl)
+                    if h1_sl_price < entry and (entry - h1_sl_price) <= atr * 1.5:
+                        sl = round(h1_sl_price - buf, 2)
+            # Final fallback: ATR-based
+            if not sl:
+                sl = round(current_price - max(atr * 0.8, 1.0), 2)
             return _make_zone(entry, sl, current_price, sl, "Momentum Breakout (Buy)")
+
+        elif direction == "sell":
+            entry = round(current_price - 0.3, 2)
+            # SL: above the M15 swing high — actual structure, capped at 3x ATR
+            sl = None
+            m15_sh = b2.get("timeframes", {}).get("M15", {}).get("last_sh")
+            if m15_sh:
+                m15_sh_price = float(m15_sh["price"]) if isinstance(m15_sh, dict) else float(m15_sh)
+                if m15_sh_price > entry and (m15_sh_price - entry) <= atr * 2:
+                    sl = round(m15_sh_price + buf, 2)
+            if not sl:
+                h1_sh = b2.get("timeframes", {}).get("H1", {}).get("last_sh")
+                if h1_sh:
+                    h1_sh_price = float(h1_sh["price"]) if isinstance(h1_sh, dict) else float(h1_sh)
+                    if h1_sh_price > entry and (h1_sh_price - entry) <= atr * 2:
+                        sl = round(h1_sh_price + buf, 2)
+            if not sl:
+                sl = round(current_price + max(atr * 0.8, 1.0), 2)
+            return _make_zone(entry, sl, current_price, sl, "Momentum Breakout (Sell)")
 
     if model_name == "structural_breakout":
         # Check if this should be handled by momentum breakout
@@ -764,14 +798,33 @@ def get_entry_for_model(model_name, direction, b3, b4, b7, b1, b2, current_price
                 
                 return _make_zone(entry, sl, bos_level, sl, "Structural Breakout → Straight Shooter")
             
-            # Normal retest entry
+            # Normal retest entry — use swing levels for SL, not just BOS + tiny buffer
+            atr = float(b1.get("atr") or 2.0)
+            min_sl_dist = max(atr * 0.5, 1.0)  # minimum 0.5x ATR = ~50-100 pips on gold
+
             if direction == "sell":
-                sl = round(float(bos_level) + buf, 2)
                 entry = round(float(bos_level) - 0.5, 2)
+                # SL: above last M15 swing high
+                sl = None
+                m15_sh = b2.get("timeframes", {}).get("M15", {}).get("last_sh")
+                if m15_sh:
+                    sh_p = float(m15_sh["price"]) if isinstance(m15_sh, dict) else float(m15_sh)
+                    if sh_p > entry and (sh_p - entry) <= atr * 3:
+                        sl = round(sh_p + buf, 2)
+                if sl is None:
+                    sl = round(entry + min_sl_dist, 2)
                 return _make_zone(entry, sl, float(bos_level), sl, "Structural Breakout (Retest)")
             else:
-                sl = round(float(bos_level) - buf, 2)
                 entry = round(float(bos_level) + 0.5, 2)
+                # SL: below last M15 swing low
+                sl = None
+                m15_sl = b2.get("timeframes", {}).get("M15", {}).get("last_sl")
+                if m15_sl:
+                    sl_p = float(m15_sl["price"]) if isinstance(m15_sl, dict) else float(m15_sl)
+                    if sl_p < entry and (entry - sl_p) <= atr * 3:
+                        sl = round(sl_p - buf, 2)
+                if sl is None:
+                    sl = round(entry - min_sl_dist, 2)
                 return _make_zone(entry, sl, float(bos_level), sl, "Structural Breakout (Retest)")
         
         # Fallback to OB/FVG if BOS level not available
@@ -949,30 +1002,56 @@ def _smart_ob(direction, b7, buf, current_price=None, b1=None, b2=None, b3=None)
 
 def _smart_fvg(direction, b7, buf, current_price=None, b1=None, b2=None, b3=None):
     MAX_DIST = 5.0
+
+    # Detect strong trend: H4+H1+M15 all agree
+    strong_trend = False
+    if b2 and current_price:
+        h4_bias  = b2.get("timeframes", {}).get("H4", {}).get("bias", "neutral")
+        h1_bias  = b2.get("timeframes", {}).get("H1", {}).get("bias", "neutral")
+        m15_bias = b2.get("timeframes", {}).get("M15", {}).get("bias", "neutral")
+        if direction == "buy":
+            strong_trend = (h4_bias == "bullish" and h1_bias == "bullish" and m15_bias == "bullish")
+        elif direction == "sell":
+            strong_trend = (h4_bias == "bearish" and h1_bias == "bearish" and m15_bias == "bearish")
+
     if direction == "buy":
         fvgs = b7.get("bullish_fvgs", [])
         for fvg in fvgs:
             proximal = round(float(fvg["bottom"]), 2)
             distal   = round(float(fvg["top"]), 2)
-            entry    = round(float(fvg["midpoint"]), 2)
-            if current_price and abs(entry - current_price) > MAX_DIST:
+            midpoint = round(float(fvg["midpoint"]), 2)
+            if current_price and abs(midpoint - current_price) > MAX_DIST:
                 continue
-            atr_buf = float(b1.get("atr") or 2.0) * 0.3 if b1 else 0.5
-            atr_buf = max(atr_buf, 0.5)
-            sl = round(proximal - atr_buf, 2)
+            atr_val = float(b1.get("atr") or 2.0) if b1 else 2.0
+            sl_buf  = max(atr_val * 0.15, 0.3)
+            # Strong trend: enter at current price — no pullback coming
+            # Ranging: wait at FVG midpoint for pullback fill
+            at_fvg_now = b7.get("at_bull_fvg", False)
+            if strong_trend or at_fvg_now:
+                entry = round(current_price, 2)
+            else:
+                entry = midpoint
+            sl = round(proximal - sl_buf, 2)
             return _make_zone(entry, sl, proximal, distal, "Bull FVG CE")
+
     elif direction == "sell":
         fvgs = b7.get("bearish_fvgs", [])
         for fvg in fvgs:
             proximal = round(float(fvg["top"]), 2)
             distal   = round(float(fvg["bottom"]), 2)
-            entry    = round(float(fvg["midpoint"]), 2)
-            if current_price and abs(entry - current_price) > MAX_DIST:
+            midpoint = round(float(fvg["midpoint"]), 2)
+            if current_price and abs(midpoint - current_price) > MAX_DIST:
                 continue
-            atr_buf = float(b1.get("atr") or 2.0) * 0.3 if b1 else 0.5
-            atr_buf = max(atr_buf, 0.5)
-            sl = round(proximal + atr_buf, 2)
+            atr_val = float(b1.get("atr") or 2.0) if b1 else 2.0
+            sl_buf  = max(atr_val * 0.15, 0.3)
+            at_fvg_now = b7.get("at_bear_fvg", False)
+            if strong_trend or at_fvg_now:
+                entry = round(current_price, 2)
+            else:
+                entry = midpoint
+            sl = round(proximal + sl_buf, 2)
             return _make_zone(entry, sl, proximal, distal, "Bear FVG CE")
+
     return None
 
 

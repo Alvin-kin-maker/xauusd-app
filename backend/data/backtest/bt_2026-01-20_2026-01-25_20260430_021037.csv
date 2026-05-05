@@ -1,0 +1,2 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-01-20 16:40:00,2026-01-20,new_york,buy,momentum_breakout,76.0,STRONG,True,[],4736.67,premium,bullish,False,59.14,81.6,14.85905,False,,4736.37,4716.37,200.0,4800.0,4850.0,4911.17,RUNNER_STOPPED,636.3,1674,2026-01-21 21:35:00,True,True,WIN

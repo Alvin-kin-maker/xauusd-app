@@ -1,68 +1,82 @@
 {
   "events": [
     {
-      "title": "Core PPI m/m",
+      "title": "New Home Sales",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-05-05T13:59:00",
+      "time_str": "2026-05-05 13:59"
+    },
+    {
+      "title": "ISM Services PMI",
       "currency": "USD",
       "impact": "high",
-      "time": "2026-04-14T12:30:00",
-      "time_str": "2026-04-14 12:30"
+      "time": "2026-05-05T14:00:00",
+      "time_str": "2026-05-05 14:00"
     },
     {
-      "title": "PPI m/m",
+      "title": "JOLTS Job Openings",
       "currency": "USD",
       "impact": "high",
-      "time": "2026-04-14T12:30:00",
-      "time_str": "2026-04-14 12:30"
+      "time": "2026-05-05T14:00:00",
+      "time_str": "2026-05-05 14:00"
     },
     {
-      "title": "President Trump Speaks",
+      "title": "New Home Sales",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-04-15T10:00:00",
-      "time_str": "2026-04-15 10:00"
+      "time": "2026-05-05T14:00:00",
+      "time_str": "2026-05-05 14:00"
     },
     {
-      "title": "Empire State Manufacturing Index",
+      "title": "ADP Non-Farm Employment Change",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-04-15T12:30:00",
-      "time_str": "2026-04-15 12:30"
-    },
-    {
-      "title": "Philly Fed Manufacturing Index",
-      "currency": "USD",
-      "impact": "medium",
-      "time": "2026-04-16T12:30:00",
-      "time_str": "2026-04-16 12:30"
+      "time": "2026-05-06T12:15:00",
+      "time_str": "2026-05-06 12:15"
     },
     {
       "title": "Unemployment Claims",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-04-16T12:30:00",
-      "time_str": "2026-04-16 12:30"
+      "time": "2026-05-07T12:30:00",
+      "time_str": "2026-05-07 12:30"
     },
     {
-      "title": "President Trump Speaks",
+      "title": "Average Hourly Earnings m/m",
       "currency": "USD",
-      "impact": "medium",
-      "time": "2026-04-16T23:00:00",
-      "time_str": "2026-04-16 23:00"
+      "impact": "high",
+      "time": "2026-05-08T12:30:00",
+      "time_str": "2026-05-08 12:30"
     },
     {
-      "title": "FOMC Member Waller Speaks",
+      "title": "Non-Farm Employment Change",
       "currency": "USD",
-      "impact": "medium",
-      "time": "2026-04-17T18:00:00",
-      "time_str": "2026-04-17 18:00"
+      "impact": "high",
+      "time": "2026-05-08T12:30:00",
+      "time_str": "2026-05-08 12:30"
     },
     {
-      "title": "President Trump Speaks",
+      "title": "Unemployment Rate",
+      "currency": "USD",
+      "impact": "high",
+      "time": "2026-05-08T12:30:00",
+      "time_str": "2026-05-08 12:30"
+    },
+    {
+      "title": "Prelim UoM Consumer Sentiment",
       "currency": "USD",
       "impact": "medium",
-      "time": "2026-04-17T21:00:00",
-      "time_str": "2026-04-17 21:00"
+      "time": "2026-05-08T14:00:00",
+      "time_str": "2026-05-08 14:00"
+    },
+    {
+      "title": "Prelim UoM Inflation Expectations",
+      "currency": "USD",
+      "impact": "medium",
+      "time": "2026-05-08T14:00:00",
+      "time_str": "2026-05-08 14:00"
     }
   ],
-  "cached_at": "2026-04-18T14:57:25.642752+00:00"
+  "cached_at": "2026-05-05T17:24:37.657475+00:00"
 }

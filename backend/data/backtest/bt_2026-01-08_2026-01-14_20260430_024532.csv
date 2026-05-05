@@ -1,0 +1,2 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-01-09 15:05:00,2026-01-09,overlap,sell,structural_breakout,70.6,STRONG,True,[],4471.57,premium,bearish,False,45.91,81.6,14.20189,False,,4466.6,4469.1,25.0,4455.02,4430.51,4407.73,SL_HIT,-25.0,1,2026-01-14 13:54:00,False,False,LOSS

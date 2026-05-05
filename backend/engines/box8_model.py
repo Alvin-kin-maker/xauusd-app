@@ -565,14 +565,23 @@ def model_htf_level_reaction(b1, b2, b3, b4, b5, b6, b7):
     # Also require a confirmation candle (rejection) at the level
     has_confirmation = len(b7.get("candle_patterns", [])) > 0 or b7.get("at_bull_ob") or b7.get("at_bear_ob")
 
+    # H4 gate: don't trade against H4 trend at key levels
+    h4_bias_htf = b2["timeframes"]["H4"]["bias"]
+    h1_bias_htf = b2["timeframes"]["H1"]["bias"]
+    h4_h1_oppose_htf = (
+        (h1_bias_htf == "bullish" and h4_bias_htf == "bearish") or
+        (h1_bias_htf == "bearish" and h4_bias_htf == "bullish")
+    )
+
     validated = (
         good_session and
         b4["at_key_level"] and
         has_confirmation and  # must have rejection candle at level
+        not h4_h1_oppose_htf and
         score >= 65
     )
 
-    missed_rule = "Need: at HTF level + rejection candle + score≥65. No counter-trend."
+    missed_rule = "Need: at HTF level + rejection candle + H4 aligned + score≥65."
 
     return model_result(name, validated, min(score, 100), reasons,
                        entry_type="15M or 5M confirmation candle close", missed_rule=missed_rule)
@@ -729,9 +738,18 @@ def model_double_top_bottom_trap(b1, b2, b3, b4, b5, b6, b7):
 
     pattern_detected = any(p["type"] in ["double_top", "double_bottom"] for p in b7["patterns"])
 
+    # Block when H4 and H1 disagree — counter-trend traps lose
+    h4_bias_dttb = b2["timeframes"]["H4"]["bias"]
+    h1_bias_dttb = b2["timeframes"]["H1"]["bias"]
+    h4_h1_oppose = (
+        (h1_bias_dttb == "bullish" and h4_bias_dttb == "bearish") or
+        (h1_bias_dttb == "bearish" and h4_bias_dttb == "bullish")
+    )
+
     validated = (
         good_session and
         (b3["eqh_count"] > 0 or b3["eql_count"] > 0) and
+        not h4_h1_oppose and
         score >= 60
     )
 
@@ -906,6 +924,7 @@ def model_fvg_continuation(b1, b2, b3, b4, b5, b6, b7):
     validated = (
         good_session and
         has_fvg and
+        at_fvg and           # Must be AT the FVG, not just nearby — prevents chasing
         h1_bias != "neutral" and
         score >= 60
     )
@@ -1069,12 +1088,11 @@ def model_silver_bullet(b1, b2, b3, b4, b5, b6, b7):
     overall = b2.get("overall_bias", "neutral")
 
     htf_aligned = False
-    if sweep_bias == "buy"  and h4_bias in ["bullish"] and d1_bias in ["bullish", "neutral"]:
-        htf_aligned = True
-    elif sweep_bias == "sell" and h4_bias in ["bearish"] and d1_bias in ["bearish", "neutral"]:
-        htf_aligned = True
-    elif sweep_bias and overall == sweep_bias:
-        htf_aligned = True
+    if sweep_bias == "buy"  and h4_bias == "bullish":
+        htf_aligned = True  # H4 must be bullish for BUY
+    elif sweep_bias == "sell" and h4_bias == "bearish":
+        htf_aligned = True  # H4 must be bearish for SELL
+    # Removed: D1-only bypass was allowing BUY when H4 bearish in March crash
 
     if htf_aligned:
         score += 15
@@ -1097,6 +1115,7 @@ def model_silver_bullet(b1, b2, b3, b4, b5, b6, b7):
 
     validated = (
         core_rules_met and
+        htf_aligned and
         score >= 65
     )
 
@@ -1134,7 +1153,8 @@ def model_structural_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
 
     # Extra: HTF trend alignment gives bonus
     direction = sb["direction"]
-    h4_bias   = b2.get("h4_bias", "neutral")
+    h4_bias   = b2["timeframes"]["H4"]["bias"]  # fixed: was using wrong key
+    h1_bias   = b2["timeframes"]["H1"]["bias"]
     htf_dir   = "bullish" if direction == "buy" else "bearish"
     if h4_bias == htf_dir:
         score = min(score + 10, 100)
@@ -1157,7 +1177,14 @@ def model_structural_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
             score = max(0, score - 25)
             reasons.append(f"Move exhaustion: {round(move/atr,1)}x ATR already moved ✗")
 
-    validated = sb["validated"] and score >= 60
+    # Block when H4 opposes direction — structural breakout against H4 trend loses
+    d1_bias_sb = b2["timeframes"]["D1"]["bias"]
+    h4_opposes = (
+        (direction == "buy"  and h4_bias == "bearish") or
+        (direction == "sell" and h4_bias == "bullish") or
+        (direction == "sell" and d1_bias_sb == "bullish")  # no SELL in D1 uptrend
+    )
+    validated = sb["validated"] and score >= 60 and not h4_opposes
 
     return model_result(
         name, validated, min(score, 100), reasons,
@@ -1206,7 +1233,13 @@ def model_momentum_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
     else:
         reasons.append(f"Session {b1.get('primary_session')} ✓")
 
-    validated = mb["validated"] and session_ok and score >= 55
+    h4_bias_mb   = b2["timeframes"]["H4"]["bias"]
+    direction_mb = mb.get("direction", "buy")
+    h4_opposes_mb = (
+        (direction_mb == "buy"  and h4_bias_mb == "bearish") or
+        (direction_mb == "sell" and h4_bias_mb == "bullish")
+    )
+    validated = mb["validated"] and session_ok and score >= 55 and not h4_opposes_mb
 
     return model_result(
         name, validated, min(score, 100), reasons,
@@ -1219,20 +1252,28 @@ def model_momentum_breakout(b1, b2, b3, b4, b5, b6, b7, b13):
 # MODEL PRIORITY ORDER
 # ------------------------------------------------------------
 
+# Active models — focused on 2 proven models for now
+# Disabled models kept in code (see ARCHIVED_PRIORITY below) for future re-enabling
 MODEL_PRIORITY = [
-    "silver_bullet",          # ← highest priority: time-window precision
-    "momentum_breakout",      # ← straight shooter: urgent, no retest
-    "london_sweep_reverse",
-    "structural_breakout",    # ← BOS retest entry
-    "htf_level_reaction",
-    "liquidity_grab_bos",
-    "ob_fvg_stack",
-    "choch_reversal",
-    "ob_mitigation",
-    "fvg_continuation",
-    "ny_continuation",
-    "double_top_bottom_trap",
-    "asian_range_breakout",
+    "structural_breakout",    # ← BOS retest entry, big winners on reversal days
+    "momentum_breakout",      # ← straight shooter: trending market continuation
+]
+
+# Disabled models — re-enable by moving entries up to MODEL_PRIORITY
+# These were disabled after Phase 1 testing showed they don't fire reliably
+# or generate consistent losses in current market conditions
+ARCHIVED_PRIORITY = [
+    "silver_bullet",          # counter-trend reversal, killed by H4+H1 conflict
+    "london_sweep_reverse",   # never fills
+    "htf_level_reaction",     # fires counter-trend, lost in January
+    "liquidity_grab_bos",     # same issue as silver_bullet
+    "ob_fvg_stack",           # ghosts heavily
+    "choch_reversal",         # ghosts in trends
+    "ob_mitigation",          # counter-trend losses
+    "fvg_continuation",       # ghosts and bounces lose
+    "ny_continuation",        # barely fires
+    "double_top_bottom_trap", # counter-trend losses
+    "asian_range_breakout",   # ghosts
 ]
 
 

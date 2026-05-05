@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python backtest.py --from 2026-01-01 --to 2026-01-31 --debug)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "PowerShell(cd \"C:\\\\Users\\\\alvin\\\\xauusd_app\\\\backend\"; $env:PYTHONIOENCODING=\"utf-8\"; python backtest.py --from 2026-01-01 --to 2026-01-31 --debug 2>&1 | Select-Object -First 300)",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('C:/Users/alvin/xauusd_app/backend/data/cot_cache.json'\\)\\); print\\('available:', d.get\\('cot_available'\\)\\); print\\('keys:', list\\(d.keys\\(\\)\\)[:10]\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('C:/Users/alvin/xauusd_app/backend/data/cot_cache.json'\\)\\); print\\('available:', d.get\\('cot_available'\\)\\); print\\('keys:', list\\(d.keys\\(\\)\\)[:10]\\)\")",
+      "PowerShell(Test-Path *)",
+      "Bash(python -c \"import json; d=json.load\\(open\\('C:/Users/alvin/xauusd_app/backend/data/cot_cache.json'\\)\\); print\\(json.dumps\\(d, indent=2\\)\\)\")",
+      "Bash(PYTHONIOENCODING=utf-8 python backtest.py --from 2026-01-01 --to 2026-01-31 --debug)",
+      "Bash(echo \"PID: $!\")",
+      "PowerShell(Tee-Object *)",
+      "PowerShell(cd C:\\\\Users\\\\alvin\\\\xauusd_app\\\\backend; $env:PYTHONIOENCODING=\"utf-8\"; $out = python backtest.py --from 2026-01-01 --to 2026-01-03 2>&1; $out | Select-Object -First 80 | Out-String)",
+      "Bash([ -s \"$f\" ])",
+      "PowerShell(Out-File *)",
+      "PowerShell(cd C:\\\\Users\\\\alvin\\\\xauusd_app\\\\backend; $env:PYTHONIOENCODING=\"utf-8\"; $out = python backtest.py --from 2026-01-01 --to 2026-01-03 --debug 2>&1; $out | Select-Object -Last 80 | Out-String)",
+      "PowerShell(Get-Item *)",
+      "PowerShell(cd C:\\\\Users\\\\alvin\\\\xauusd_app\\\\backend; $env:PYTHONIOENCODING=\"utf-8\"; python -u backtest.py --from 2026-01-01 --to 2026-01-31 > \"C:\\\\Users\\\\alvin\\\\xauusd_app\\\\backend\\\\bt_jan_result.txt\" 2>&1; Write-Host \"Exit: $LASTEXITCODE\")",
+      "Bash(fuser bt_mb_jan.txt)",
+      "Bash(PYTHONIOENCODING=utf-8 python *)"
+    ]
+  }
+}

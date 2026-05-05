@@ -23,7 +23,7 @@ from utils.config import VOLUME_SPIKE_MULTIPLIER, VOLUME_LOOKBACK
 # Consolidation = tight range for N candles before BOS
 # ------------------------------------------------------------
 
-def detect_consolidation(df, lookback=20, threshold=0.5):
+def detect_consolidation(df, lookback=20, threshold=0.15):
     """
     Detect if price was consolidating before current candle.
 
@@ -386,6 +386,14 @@ def detect_momentum_breakout(df_m5, df_m15, b1, b2, b3, b4, b5, b7, current_pric
 
     if candle_range < 0.3:
         return None
+
+    # Hard requirement: candle must be significant relative to H1 ATR
+    # Filters noise-level candles in high-volatility environments.
+    # Mar 10 loss: 7pt candle in 25pt ATR = 0.28x → rejected
+    # Mar 4 win:  15pt candle in 39pt ATR = 0.38x → passes
+    atr_h1 = b1.get("atr", 2.0)
+    if atr_h1 and atr_h1 > 0 and candle_range < atr_h1 * 0.3:
+        return None  # too small to be a real displacement
 
     body_ratio = body_size / candle_range
     is_bearish = candle["close"] < candle["open"]

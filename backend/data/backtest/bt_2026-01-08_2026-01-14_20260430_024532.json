@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "period": {
+      "from": "2026-01-08",
+      "to": "2026-01-14"
+    },
+    "total_signals": 1,
+    "filled": 1,
+    "wins": 0,
+    "losses": 1,
+    "win_rate": 0.0,
+    "sl_rate": 100.0,
+    "net_pnl_pips": -25.0,
+    "avg_win": 0.0,
+    "avg_loss": -25.0,
+    "expectancy": -25.0,
+    "rr_ratio": 0.0,
+    "ghost_rate": 0.0
+  },
+  "trades": [
+    {
+      "time": "2026-01-09 15:05:00",
+      "date": "2026-01-09",
+      "session": "overlap",
+      "direction": "sell",
+      "model": "structural_breakout",
+      "score": 70.6,
+      "grade": "STRONG",
+      "should_trade": true,
+      "kill_switches": [],
+      "price": 4471.57,
+      "price_zone": "premium",
+      "sweep": "bearish",
+      "sweep_fresh": false,
+      "rsi_m15": 45.91,
+      "cot_pct": 81.6,
+      "atr": 14.20189,
+      "news_blocked": false,
+      "news_reason": null,
+      "entry": 4466.6,
+      "sl": 4469.1,
+      "sl_pips": 25.0,
+      "tp1": 4455.02,
+      "tp2": 4430.51,
+      "tp3": 4407.73,
+      "result": "SL_HIT",
+      "pnl_pips": -25.0,
+      "bars_held": 1,
+      "exit_time": "2026-01-14 13:54:00",
+      "tp1_hit": false,
+      "tp2_hit": false,
+      "tag": "LOSS"
+    }
+  ]
+}

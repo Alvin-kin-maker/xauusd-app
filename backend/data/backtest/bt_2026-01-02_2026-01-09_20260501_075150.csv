@@ -1,0 +1,4 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-01-02 13:30:00,2026-01-02,overlap,buy,fvg_continuation,77.1,STRONG,True,[],4393.52,discount,bullish,False,66.61,81.3,16.06338,False,,4393.42,4387.63,57.9,4421.0,4449.01,4467.74,GHOST,0,0,2026-01-15 21:34:00,False,False,GHOST
+2026-01-05 19:00:00,2026-01-05,new_york,buy,fvg_continuation,78.4,STRONG,True,[],4437.8,premium,bullish,True,58.28,81.3,18.04572,False,,4437.7,4427.3,104.0,4467.74,4488.53,4517.51,GHOST,0,0,2026-01-15 21:34:00,False,False,GHOST
+2026-01-07 18:35:00,2026-01-07,new_york,buy,choch_reversal,71.4,STRONG,True,[],4462.12,premium,bullish,True,61.62,81.3,18.09986,False,,4462.24,4456.31,59.3,4482.38,4497.22,4508.82,GHOST,0,0,2026-01-15 21:34:00,False,False,GHOST

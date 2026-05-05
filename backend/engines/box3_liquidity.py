@@ -426,13 +426,14 @@ def find_bsl_ssl(df, current_price, lookback=50):
     return bsl_levels[:5], ssl_levels[:5]
 
 
-def run(candle_store):
+def run(candle_store, current_session_override=None):
     """
     Run full Liquidity Engine.
 
     Uses M15 for session sweeps and EQH/EQL detection.
     Uses H1 for PDH/PDL and weekly sweep detection.
     FIX: Passes ATR and session info to sweep detection.
+    FIX: Accepts current_session_override for backtest accuracy.
 
     Returns:
         dict with all liquidity findings
@@ -441,10 +442,13 @@ def run(candle_store):
     df_h1  = candle_store.get_closed("H1")
     df_m5  = candle_store.get_closed("M5")
 
-    # Get ATR for sweep size calculation
-    from engines.box1_market_context import get_current_session
-    session_info = get_current_session()
-    current_session = session_info["primary_session"]
+    # Get session — use override if provided (backtest), else live detection
+    if current_session_override is not None:
+        current_session = current_session_override
+    else:
+        from engines.box1_market_context import get_current_session
+        session_info = get_current_session()
+        current_session = session_info["primary_session"]
 
     # Calculate ATR on M15 for sweep sizing
     atr = None

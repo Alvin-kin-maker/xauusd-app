@@ -329,8 +329,13 @@ def walk_to_outcome(direction, entry, sl, tp1, tp2, tp3,
                             (direction == "sell" and row["high"] < entry - chase_limit)
                 if gone_away:
                     return _outcome("GHOST", 0, bar_n, row["time"], False, False)
-                # Hard timeout: if entry not filled after 48 M15 bars (12h on M15)
-                if bar_n >= 48:
+                # Hard timeout: breakout models expire in 30 bars (~30 min on M1)
+                # Limit/pullback models get 120 bars (~2 hours) — pullbacks take time
+                _timeout_bars = 30 if model_name in {
+                    "double_top_bottom_trap", "structural_breakout",
+                    "momentum_breakout", "asian_range_breakout"
+                } else 120
+                if bar_n >= _timeout_bars:
                     return _outcome("GHOST", 0, bar_n, row["time"], False, False)
             continue
 
@@ -532,22 +537,38 @@ for bar_idx, scan_row in scan_bt.iterrows():
     if not b1.get("is_tradeable"):
         continue
 
-    # ── Determine current H4 and M15 bar keys for cache invalidation ──
+    # ── Determine current H1 and H4 bar keys for cache invalidation ──
     h4_data   = raw.get("H4", pd.DataFrame())
+    h1_data_c = raw.get("H1", pd.DataFrame())
+    m15_data_c = raw.get("M15", pd.DataFrame())
     curr_h4   = h4_data[h4_data["time"] <= scan_time]["time"].iloc[-1] if not h4_data.empty else None
-    curr_m15  = scan_time  # M15 bar is the scan time itself
+    curr_h1   = h1_data_c[h1_data_c["time"] <= scan_time]["time"].iloc[-1] if not h1_data_c.empty else None
+    curr_m15  = m15_data_c[m15_data_c["time"] <= scan_time]["time"].iloc[-1] if not m15_data_c.empty else None
 
-    # ── box2 (trend): cache per H4 bar — H4 bias only changes on H4 close ──
-    _h4_changed = (_b2_cache is None or curr_h4 != _last_h4_bar)
-    if _h4_changed:
+    # ── box2 (trend): cache per M15 bar — MSS can fire mid-H1 and expires in 20 M15 bars.
+    # Caching per H1 caused MSS to be missed when it fired and expired within the same H1.
+    # M15 cache means we catch MSS within 15 minutes of it firing.
+    _m15_changed = (_b2_cache is None or curr_m15 != _last_h4_bar)
+    if _m15_changed:
         _b2_cache    = safe(run_b2, store, label="b2")
-        _b4_cache    = safe(run_b4, store, label="b4")
-        _last_h4_bar = curr_h4
+        _last_h4_bar = curr_m15  # reuse variable, now tracks M15 bar
+
+    # ── box4 (levels): still H4-based — pivot/VWAP levels don't change on H1 ──
+    _h4_changed = (_b4_cache is None or curr_h4 != _last_h4_bar)
+    # Note: _last_h4_bar now tracks H1, so use curr_h4 separately for box4
+    _b4_needs_update = (_b4_cache is None)
+    if not hasattr(run_b4, '_last_h4_cache_key'):
+        run_b4._last_h4_cache_key = None
+    if run_b4._last_h4_cache_key != curr_h4:
+        _b4_cache = safe(run_b4, store, label="b4")
+        run_b4._last_h4_cache_key = curr_h4
+
     b2 = _b2_cache
     if not b2: continue
 
     # ── box3 (liquidity): runs every bar — sweeps change constantly ──
-    b3 = safe(run_b3, store, label="b3")
+    # Pass historical session so sweep ATR thresholds use bar time, not today
+    b3 = safe(run_b3, store, hist_session["primary_session"], label="b3")
 
     # ── box4 (levels): updated together with box2 on H4 close ──
     b4 = _b4_cache
@@ -645,16 +666,42 @@ for bar_idx, scan_row in scan_bt.iterrows():
             print(f"    [zone cooldown] entry:{_entry_raw_check} — same OB failed recently, 4h cooldown")
         continue
 
-    # ── Proximity check: reject stale entries ─────────────────
-    # If price has already moved past the zone entry by more than
-    # 1×ATR, the setup is stale — live system would not fire here.
-    # This prevents backtesting phantom trades on old OB/FVG levels.
+    # ── Entry direction sanity check ──────────────────────────
+    # Breakout models use stop orders (BUY above price / SELL below price).
+    # Limit models use limit orders (BUY below price / SELL above price).
+    # Apply wrong-side filter only to limit models.
+    _BREAKOUT_MODELS = {"double_top_bottom_trap", "structural_breakout",
+                        "momentum_breakout", "asian_range_breakout"}
+    _is_breakout = model_name in _BREAKOUT_MODELS
+
     _entry_raw   = entry_data.get("entry", mid)
+    _direction   = b9["direction"]
+    _entry_wrong_side = (
+        (_direction == "buy"  and _entry_raw > mid + 0.5) or
+        (_direction == "sell" and _entry_raw < mid - 0.5)
+    )
+    if _entry_wrong_side and not _is_breakout:
+        if args.debug:
+            print(f"    [invalid entry] {_direction} entry:{_entry_raw} "
+                  f"price:{mid} — entry on wrong side of price, skipping")
+        continue
+
+    # For breakout models with entry above/below price, verify entry is
+    # within 1x ATR — otherwise the breakout level is too far away.
+    if _entry_wrong_side and _is_breakout:
+        _atr_check = float(b1.get("atr") or 3.0)
+        _dist = abs(_entry_raw - mid)
+        if _dist > _atr_check:
+            if args.debug:
+                print(f"    [breakout too far] {_direction} entry:{_entry_raw} "
+                      f"price:{mid} dist:{_dist:.1f} atr:{_atr_check:.1f} — skipping")
+            continue
+
+    # ── Proximity check: reject stale entries ─────────────────
     _atr         = float(b1.get("atr") or 3.0)
-    _dist_to_entry = abs(mid - _entry_raw)
-    _price_past  = ((b9["direction"] == "buy"  and mid > _entry_raw + _atr) or
-                   (b9["direction"] == "sell" and mid < _entry_raw - _atr))
-    if _price_past:
+    _price_past  = ((b9["direction"] == "buy"  and mid > _entry_raw + _atr * 0.5) or
+                   (b9["direction"] == "sell" and mid < _entry_raw - _atr * 0.5))
+    if _price_past and not _is_breakout:
         if args.debug:
             print(f"    [stale entry] {b9['direction']} entry:{_entry_raw} "
                   f"price:{mid} atr:{_atr:.2f} — price moved past zone, skipping")
@@ -679,7 +726,7 @@ for bar_idx, scan_row in scan_bt.iterrows():
 
     if not entry or not sl or not tp1:
         continue
-    if sl_pips < 5 or sl_pips > 250:   # sanity filter
+    if sl_pips < 10 or sl_pips > 250:   # 100 pips min (50 pip SL_MIN in points)
         continue
 
     # ATR-relative SL gate: block if SL > 2x ATR
@@ -704,7 +751,7 @@ for bar_idx, scan_row in scan_bt.iterrows():
     # Longer trades are marked OPEN_AT_END and don't block future signals.
     outcome = walk_to_outcome(
         b9["direction"], entry, sl, tp1, tp2, tp3,
-        scan_time, walk_df, max_bars=600
+        scan_time, walk_df, max_bars=2000
     )
 
     # ── Trade resolved — unlock scanner ──────────────────────────────
@@ -796,10 +843,15 @@ def tag(t):
     if r in ("TP3_HIT","RUNNER_STOPPED"): return "WIN"
     if r == "BE_STOPPED":                return "BE"
     if r == "SL_HIT":                    return "LOSS"
-    if r == "SPIKE_SL":                  return "SPIKE_SL"  # SL hit on spike candle — separate audit
+    if r == "SPIKE_SL":                  return "SPIKE_SL"
     if r == "GHOST":                     return "GHOST"
     if r == "NEWS_BLOCKED":              return "BLOCKED"
-    if r == "OPEN_AT_END":               return "OPEN"
+    if r == "OPEN_AT_END":
+        # Count as WIN if in profit, LOSS if in loss, OPEN if flat
+        pnl = t.get("pnl_pips", 0)
+        if pnl > 50:   return "WIN"   # clearly winning
+        if pnl < -50:  return "LOSS"  # clearly losing
+        return "OPEN"  # too close to call
     return "OTHER"
 
 for t in all_trades: t["tag"] = tag(t)

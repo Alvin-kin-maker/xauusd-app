@@ -1,0 +1,2 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-02-20 17:00:00,2026-02-20,new_york,buy,structural_breakout,82.1,STRONG,True,[],5039.93,premium,bullish,True,69.54,81.3,20.10579,False,,5046.52,5026.52,200.0,5097.34,5148.16,5253.86,SL_HIT,-200.0,1,2026-02-20 17:03:00,False,False,LOSS

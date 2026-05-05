@@ -1,0 +1,16 @@
+momentum_breakout_jan: IN_PROGRESS_2
+momentum_breakout_feb: PENDING
+momentum_breakout_mar: PENDING
+momentum_breakout_apr: PENDING
+structural_breakout_jan: PENDING
+structural_breakout_feb: PENDING
+structural_breakout_mar: PENDING
+structural_breakout_apr: PENDING
+silver_bullet_jan: PENDING
+silver_bullet_feb: PENDING
+silver_bullet_mar: PENDING
+silver_bullet_apr: PENDING
+liquidity_grab_bos_jan: PENDING
+liquidity_grab_bos_feb: PENDING
+liquidity_grab_bos_mar: PENDING
+liquidity_grab_bos_apr: PENDING

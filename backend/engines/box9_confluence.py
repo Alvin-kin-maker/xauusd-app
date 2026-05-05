@@ -42,49 +42,54 @@ def grade_signal(score):
 def resolve_direction(b2, b3, b7, b8):
     """
     Determine trade direction from engine signals.
-    Priority: Fresh sweep reversal → Active model → Entry bias → Trend bias
 
-    ICT principle: a fresh liquidity sweep OVERRIDES stale HTF bias.
-    When price sweeps SSL and reverses UP, that is a BUY regardless of D1 trend.
-    The sweep IS the new directional information.
+    Key principle: We trade INTRADAY structure, not macro trend.
+    D1/H4 tell us the overall landscape. H1+M15 tell us where price
+    is moving RIGHT NOW. When H1+M15 both agree, that's the trade.
+
+    A D1+H4 bullish market can have 3-week bearish corrections on H1/M15
+    — those corrections ARE tradeable and are where the best risk:reward is.
+    Blocking them because D1 says "bullish" is why the system only loses.
+
+    Priority:
+    1. Fresh sweep — overrides everything (genuine institutional move)
+    2. Model sweep context (london_sweep, liquidity_grab, choch)
+    3. M15 MSS — fastest structural confirmation
+    4. H1 + M15 agreement — primary execution signal
+    5. H4 direction — medium-term bias
+    6. D1 + H4 agreement — macro fallback only
     """
-    # ── HIGHEST PRIORITY: Fresh sweep reversal ─────────────────
-    # If a sweep just happened on a major level, that defines direction
-    # This overrides stale D1/H4 bearish/bullish bias
-    if b3.get("sweep_just_happened"):
-        sweep_dir = b3.get("sweep_direction", "")
-        # bearish_sweep = highs swept (wick above high, close below) = SELL reversal
-        # bullish_sweep = lows swept  (wick below low, close above)  = BUY reversal
+    d1_bias  = b2["timeframes"]["D1"]["bias"]
+    h4_bias  = b2["timeframes"]["H4"]["bias"]
+    h1_bias  = b2["timeframes"]["H1"]["bias"]
+    m15_bias = b2["timeframes"]["M15"]["bias"]
+    fresh_sweep = b3.get("sweep_just_happened", False)
+    sweep_dir   = b3.get("sweep_direction", "")
+
+    # ── PRIORITY 1: Fresh sweep reversal ─────────────────────────
+    if fresh_sweep:
         if sweep_dir in ("bearish", "bearish_sweep"):
             return "sell"
         elif sweep_dir in ("bullish", "bullish_sweep"):
             return "buy"
 
-    # Active model tells us direction from sweep + structure
+    # ── PRIORITY 2: Active model sweep context ──────────────────
     if b8["active_model"]:
         model_name = b8["best_model_name"] or ""
 
-        # London sweep reverse: opposite of sweep direction
         if model_name == "london_sweep_reverse":
             if b3["asian_high_swept"]:
                 return "sell"
             elif b3["asian_low_swept"]:
                 return "buy"
 
-        # Liquidity grab: opposite of sweep — only when sweep ACTUALLY happened
-        # If no fresh sweep, sweep_direction is stale and must not override H1+M15
         if model_name == "liquidity_grab_bos":
             if b3.get("sweep_just_happened", False):
-                sweep_dir = b3.get("sweep_direction", "")
-                # Lows swept (bullish_sweep) = SSL grabbed = institutions buy = BUY
-                # Highs swept (bearish_sweep) = BSL grabbed = institutions sell = SELL
                 if sweep_dir in ("bullish", "bullish_sweep"):
                     return "buy"
                 elif sweep_dir in ("bearish", "bearish_sweep"):
                     return "sell"
-            # No fresh sweep → fall through to H1+M15 check
 
-        # CHOCH reversal: direction of CHOCH
         if model_name == "choch_reversal":
             m15_struct = b2["timeframes"]["M15"]["structure"]
             if m15_struct == "bullish":
@@ -92,32 +97,45 @@ def resolve_direction(b2, b3, b7, b8):
             elif m15_struct == "bearish":
                 return "sell"
 
-    # ── PRIORITY 3: H1 + M15 structural agreement ──────────────
-    # When H1 and M15 BOTH agree, this is a valid early trend signal.
-    # This OVERRIDES stale entry bias from b7 (old OBs/FVGs that no longer apply).
-    # H4 needs 4 candles to confirm new structure — H1+M15 catch it early.
-    h1_bias  = b2["timeframes"]["H1"]["bias"]
-    m15_bias = b2["timeframes"]["M15"]["bias"]
+    # ── PRIORITY 3: M15 MSS ──────────────────────────────────────
+    mss_m15_active = b2.get("mss_m15_active", False)
+    mss_m15_type   = b2.get("mss_m15_type", None)
+    if mss_m15_active and mss_m15_type:
+        if mss_m15_type == "bearish_mss":
+            return "sell"
+        elif mss_m15_type == "bullish_mss":
+            return "buy"
+
+    # ── PRIORITY 4: H1 + M15 agreement ───────────────────────────
+    # Primary execution signal. BUT: if H4 is bearish and there's no sweep,
+    # H1+M15 bullish is just a bounce in a downtrend — don't buy it.
+    # H4 bearish + H1+M15 bullish = counter-trend bounce = losing trade.
+    # H4 bullish + H1+M15 bearish = valid pullback sell.
     if h1_bias == m15_bias and h1_bias not in ("neutral", "unknown", "ranging"):
         if h1_bias == "bullish":
-            return "buy"
+            # Only return BUY if H4 is not actively bearish
+            if h4_bias != "bearish":
+                return "buy"
+            # H4 bearish + H1+M15 bullish = bounce in downtrend, skip
         elif h1_bias == "bearish":
             return "sell"
 
-    # ── PRIORITY 4: Entry bias from b7 (only if H1+M15 disagree) ──
-    # Only use this if H1 and M15 are mixed — avoids stale OB override
-    entry_bias = b7["entry_bias"]
-    if entry_bias == "bullish":
-        return "buy"
-    elif entry_bias == "bearish":
-        return "sell"
+    # ── PRIORITY 5: H4 direction — medium-term bias ──────────────
+    if h4_bias not in ("neutral", "unknown", "ranging"):
+        # H4 alone gives direction but entry engine (b7) must confirm
+        entry_bias = b7["entry_bias"]
+        if entry_bias == h4_bias.replace("bullish","bullish").replace("bearish","bearish"):
+            if h4_bias == "bullish":
+                return "buy"
+            elif h4_bias == "bearish":
+                return "sell"
 
-    # ── PRIORITY 5: D1 trend as final fallback ──
-    d1_bias = b2["timeframes"]["D1"]["bias"]
-    if d1_bias == "bullish":
-        return "buy"
-    elif d1_bias == "bearish":
-        return "sell"
+    # ── PRIORITY 6: D1 + H4 macro fallback ──────────────────────
+    if d1_bias == h4_bias and d1_bias not in ("neutral", "unknown"):
+        if d1_bias == "bullish":
+            return "buy"
+        elif d1_bias == "bearish":
+            return "sell"
 
     return "none"
 
@@ -474,19 +492,6 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8, b13, direction=None):
         if not b3.get("sweep_just_happened", False):
             kills.append("KILL: liquidity_grab_bos requires fresh sweep — no recent sweep detected")
 
-    # 5a. H4 fresh BOS opposing direction = block
-    # If H4 just broke structure in the opposite direction of our trade,
-    # the move is likely to continue against us. This is what caused all
-    # the Mar 5, Mar 11, Mar 17 losses: H4 broke bearish then system bought.
-    h4_data = b2["timeframes"]["H4"]
-    h4_bos_active = h4_data.get("bos_active", False)
-    h4_bias = h4_data.get("bias", "neutral")
-    if h4_bos_active and h4_bias != "neutral":
-        if direction == "buy" and h4_bias == "bearish":
-            kills.append(f"KILL: H4 fresh bearish BOS — H4 just broke structure down, don't buy")
-        elif direction == "sell" and h4_bias == "bullish":
-            kills.append(f"KILL: H4 fresh bullish BOS — H4 just broke structure up, don't sell")
-
     # 5b. H4 ranging MID-RANGE = no trade
     h4_structure = b2["timeframes"]["H4"]["structure"]
     if h4_structure in ["ranging", "neutral"]:
@@ -502,26 +507,27 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8, b13, direction=None):
                 if in_mid:
                     kills.append(f"KILL: H4 ranging + price at mid-range ({round(price_pos*100)}%) — wait for boundary")
 
-    # 6. Bias conflict — block ONLY if BOTH D1 AND H4 oppose the trade direction
-    # ICT: D1 bullish + H4 bearish pullback + BUY = valid entry (DON'T block)
-    #      D1 bearish + H4 bearish + BUY = fighting both HTF trends (BLOCK)
-    # H4 alone being against direction = normal pullback = don't block
-    internal_bias = b2.get("internal_bias", "neutral")
-    external_bias = b2.get("external_bias", "neutral")  # H4
-    d1_bias = b2["timeframes"]["D1"]["bias"]
-    if (internal_bias != "neutral" and external_bias != "neutral"
-            and internal_bias != external_bias
-            and not sweep_just_happened):
-        d1_vs_dir = (
-            (direction == "buy"  and d1_bias == "bearish") or
-            (direction == "sell" and d1_bias == "bullish")
+    # 6. Bias conflict — only block if H4 AND H1 BOTH oppose direction
+    # The original rule (D1+H4) was wrong — it blocked valid H1+M15 pullback trades.
+    # A D1 bull market has 3-week H1 bearish corrections. Those are valid SELL setups.
+    # What we DON'T want: H4 bearish AND H1 bearish, but trying to BUY on M15 bounce.
+    # That's fighting two active timeframes with no structural support.
+    h4_bias_ks = b2["timeframes"]["H4"]["bias"]
+    h1_bias_ks = b2["timeframes"]["H1"]["bias"]
+    h4_vs_dir  = (
+        (direction == "buy"  and h4_bias_ks == "bearish") or
+        (direction == "sell" and h4_bias_ks == "bullish")
+    )
+    h1_vs_dir  = (
+        (direction == "buy"  and h1_bias_ks == "bearish") or
+        (direction == "sell" and h1_bias_ks == "bullish")
+    )
+    # Only block if H4 AND H1 both oppose AND no sweep just happened
+    if h4_vs_dir and h1_vs_dir and not sweep_just_happened:
+        kills.append(
+            f"KILL: Bias conflict — H4 ({h4_bias_ks}) and H1 ({h1_bias_ks}) "
+            f"both oppose {direction} — fighting two active timeframes"
         )
-        h4_vs_dir = (
-            (direction == "buy"  and external_bias == "bearish") or
-            (direction == "sell" and external_bias == "bullish")
-        )
-        if d1_vs_dir and h4_vs_dir:
-            kills.append(f"KILL: Bias conflict — D1 ({d1_bias}) and H4 ({external_bias}) both oppose {direction} without sweep")
 
     # 7. CONSOLIDATION KILL SWITCH — FIXED: Check BOTH M15 AND H1
     # Get consolidation from b13 (M15 based)
@@ -562,15 +568,22 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8, b13, direction=None):
     elif direction == "buy" and rsi_m15 > 80:
         kills.append(f"KILL: RSI {round(rsi_m15,1)} extreme overbought — no buys at exhaustion")
 
-    # 10. Move exhaustion — M15, H1, D1 checks
+    # 10. Move exhaustion — only fires when trading COUNTER to H1+M15 structure.
+    # If H1+M15 are both bearish and you're selling = WITH trend = no exhaustion block.
+    # Exhaustion only matters when you're trying to sell an already-extended DROP
+    # in a market where H1+M15 are still bullish (counter-trend fade = dangerous).
+    # Similarly: don't block buys when H1+M15 are both bullish (trend continuation).
+    h1_bias_ex  = b2.get("timeframes", {}).get("H1", {}).get("bias", "neutral")
+    m15_bias_ex = b2.get("timeframes", {}).get("M15", {}).get("bias", "neutral")
+    trading_with_h1m15 = (
+        (direction == "sell" and h1_bias_ex == "bearish" and m15_bias_ex == "bearish") or
+        (direction == "buy"  and h1_bias_ex == "bullish" and m15_bias_ex == "bullish")
+    )
+
     atr_raw = b1.get("atr") or 2.0
-    # CAP ATR at 10.0 for exhaustion calculations.
-    # During news spikes ATR can hit 30+ (300pip candles), inflating thresholds 10x.
-    # This would make exhaustion kills fire only after 4000+ pip moves — useless.
-    # Capped ATR ensures safety net always works: max threshold = 10*8 = 800pip for D1.
     atr = min(float(atr_raw), 10.0)
-    if atr > 0 and not sweep_just_happened and current_price:
-        # M15 exhaustion
+    if atr > 0 and not sweep_just_happened and current_price and not trading_with_h1m15:
+        # M15 exhaustion — only when counter-trend
         m15_data = b2.get("timeframes", {}).get("M15", {})
         last_sh = m15_data.get("last_sh")
         last_sl = m15_data.get("last_sl")
@@ -579,13 +592,12 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8, b13, direction=None):
             sl_price = float(last_sl["price"]) if isinstance(last_sl, dict) else float(last_sl)
             drop_from_high = sh_price - current_price
             rise_from_low  = current_price - sl_price
-            if direction == "sell" and drop_from_high > atr * 4:
-                kills.append(f"KILL: M15 move exhaustion — price dropped {round(drop_from_high*10,0)} pips ({round(drop_from_high/atr,1)}x ATR)")
-            elif direction == "buy" and rise_from_low > atr * 4:
-                kills.append(f"KILL: M15 move exhaustion — price rose {round(rise_from_low*10,0)} pips ({round(rise_from_low/atr,1)}x ATR)")
-        
-        # H1 exhaustion — only fires for RECENT swings (within 20 H1 bars = 20 hours)
-        # Prevents "1885 pips from H1 low" blocking during multi-day bull runs
+            if direction == "sell" and drop_from_high > atr * 6:
+                kills.append(f"KILL: M15 move exhaustion — price dropped {round(drop_from_high*10,0)} pips ({round(drop_from_high/atr,1)}x ATR) — counter-trend fade too extended")
+            elif direction == "buy" and rise_from_low > atr * 6:
+                kills.append(f"KILL: M15 move exhaustion — price rose {round(rise_from_low*10,0)} pips ({round(rise_from_low/atr,1)}x ATR) — counter-trend fade too extended")
+
+        # H1 exhaustion — only when counter-trend, recent swings only
         h1_data = b2.get("timeframes", {}).get("H1", {})
         h1_last_sh = h1_data.get("last_sh")
         h1_last_sl = h1_data.get("last_sl")
@@ -599,75 +611,183 @@ def check_kill_switches(b1, b2, b3, b4, b5, b6, b7, b8, b13, direction=None):
             h1_sl_recency = h1_candle_count - h1_sl_idx
             h1_drop = h1_sh_price - current_price
             h1_rise = current_price - h1_sl_price
-            if direction == "sell" and h1_drop > atr * 4 and h1_sh_recency <= 20:
-                kills.append(f"KILL: H1 move exhaustion — price dropped {round(h1_drop*10,0)} pips from recent H1 high")
-            elif direction == "buy" and h1_rise > atr * 4 and h1_sl_recency <= 20:
-                kills.append(f"KILL: H1 move exhaustion — price rose {round(h1_rise*10,0)} pips from recent H1 low")
+            if direction == "sell" and h1_drop > atr * 8 and h1_sh_recency <= 20:
+                kills.append(f"KILL: H1 move exhaustion — price dropped {round(h1_drop*10,0)} pips from recent H1 high — counter-trend")
+            elif direction == "buy" and h1_rise > atr * 8 and h1_sl_recency <= 20:
+                kills.append(f"KILL: H1 move exhaustion — price rose {round(h1_rise*10,0)} pips from recent H1 low — counter-trend")
 
-        # D1 exhaustion — catches "2400pip run, now buying pullback" scenarios
-        # If price has risen >8x ATR from D1 swing low → extended move, dangerous to buy
-        # If price has dropped >8x ATR from D1 swing high → extended move, dangerous to sell
+        # D1 exhaustion — only when counter-trend, recent swings only (≤30 D1 bars)
         d1_data = b2.get("timeframes", {}).get("D1", {})
         d1_sh = d1_data.get("last_sh")
         d1_sl = d1_data.get("last_sl")
+        d1_candle_count = d1_data.get("candle_count", 100)
         if d1_sh and d1_sl:
             d1_sh_price = float(d1_sh["price"]) if isinstance(d1_sh, dict) else float(d1_sh)
             d1_sl_price = float(d1_sl["price"]) if isinstance(d1_sl, dict) else float(d1_sl)
+            d1_sh_idx   = int(d1_sh["index"])   if isinstance(d1_sh, dict) else 0
+            d1_sl_idx   = int(d1_sl["index"])   if isinstance(d1_sl, dict) else 0
+            d1_sh_recency = d1_candle_count - d1_sh_idx
+            d1_sl_recency = d1_candle_count - d1_sl_idx
             d1_drop = d1_sh_price - current_price
             d1_rise = current_price - d1_sl_price
-            # 8x ATR threshold for D1 — only block truly exhausted multi-day moves
-            if direction == "sell" and d1_drop > atr * 8:
-                kills.append(f"KILL: D1 move exhaustion — {round(d1_drop*10,0)} pips from D1 high — selling into extended drop")
-            elif direction == "buy" and d1_rise > atr * 8:
-                kills.append(f"KILL: D1 move exhaustion — {round(d1_rise*10,0)} pips from D1 low — buying into extended rally")
+            if direction == "sell" and d1_drop > atr * 10 and d1_sh_recency <= 30:
+                kills.append(f"KILL: D1 move exhaustion — {round(d1_drop*10,0)} pips from recent D1 high — counter-trend sell too extended")
+            elif direction == "buy" and d1_rise > atr * 10 and d1_sl_recency <= 30:
+                kills.append(f"KILL: D1 move exhaustion — {round(d1_rise*10,0)} pips from recent D1 low — counter-trend buy too extended")
 
-    # 11. COT extreme counter-direction — with sweep exception
+    # 11. COT extreme counter-direction
+    # Only fires when trading AGAINST H1+M15 structure.
+    # If H1+M15 are both bearish and we're selling, COT bullish positioning is irrelevant —
+    # price is already moving down regardless of what large speculators are holding.
+    # COT is a weekly report — it lags price action by days.
     cot_long_pct  = b6.get("cot_long_pct", 50)
     cot_available = b6.get("cot_available", False)
+    h1_bias_cot   = b2["timeframes"]["H1"]["bias"]
+    m15_bias_cot  = b2["timeframes"]["M15"]["bias"]
     if cot_available and cot_long_pct is not None:
-        # EXCEPTION: Bullish COT + bearish sweep = VALID sell setup (liquidity grab before reversal)
+        # Only block if trading COUNTER to current H1+M15 structure
+        # H1+M15 bearish + SELL = with-trend = COT irrelevant
+        # H1+M15 bullish + SELL = counter-trend = COT matters
+        selling_counter_trend = (direction == "sell" and
+                                 h1_bias_cot == "bullish" and m15_bias_cot == "bullish")
+        buying_counter_trend  = (direction == "buy" and
+                                 h1_bias_cot == "bearish" and m15_bias_cot == "bearish")
         if cot_long_pct >= 75 and sweep_just_happened and sweep_direction == "bearish" and direction == "sell":
-            # This is the liquidity grab BEFORE reversal — ALLOW
-            pass
+            pass  # liquidity grab — ALLOW
         elif cot_long_pct <= 25 and sweep_just_happened and sweep_direction == "bullish" and direction == "buy":
-            # This is the liquidity grab BEFORE reversal — ALLOW
-            pass
-        # Otherwise, block
-        elif direction == "sell" and cot_long_pct >= 75:
-            kills.append(f"KILL: COT extreme bullish ({cot_long_pct}% long) — no sweep reversal context")
-        elif direction == "buy" and cot_long_pct <= 25:
-            kills.append(f"KILL: COT extreme bearish ({cot_long_pct}% long) — no sweep reversal context")
+            pass  # liquidity grab — ALLOW
+        elif direction == "sell" and cot_long_pct >= 75 and selling_counter_trend:
+            kills.append(f"KILL: COT extreme bullish ({cot_long_pct}% long) — selling against H1+M15 bullish trend")
+        elif direction == "buy" and cot_long_pct <= 25 and buying_counter_trend:
+            kills.append(f"KILL: COT extreme bearish ({cot_long_pct}% long) — buying against H1+M15 bearish trend")
     elif not cot_available:
         kills.append("KILL: COT data unavailable — manual block until verified")
 
-    # 12. Selling in discount / buying in premium — absolute zone rule
-    # Premium = institutions sell. Discount = institutions buy. No sweep bypass.
-    # A sweep sets direction but doesn't override the zone. The direction resolver
-    # already ensures BUY comes from discount context (lows swept = price in discount).
-    price_zone = b4.get("price_zone", "unknown")
+    # 12. Selling in discount / buying in premium — with structural bypass
+    price_zone  = b4.get("price_zone", "unknown")
+    h1_bias_ks  = b2["timeframes"]["H1"]["bias"]
+    m15_bias_ks = b2["timeframes"]["M15"]["bias"]
+    h4_bias_ks  = b2["timeframes"]["H4"]["bias"]
+    atr_ks      = float(b1.get("atr") or 2.0)
+
+    sweep_confirms_sell = sweep_just_happened and sweep_direction in ("bearish", "bearish_sweep")
+    sweep_confirms_buy  = sweep_just_happened and sweep_direction in ("bullish", "bullish_sweep")
+
+    # Structure bypass: H1+M15+H4 ALL must agree — H1+M15 alone is not enough
+    # in premium. We need H4 to also be bullish to buy in premium (strong uptrend).
+    # Without H4 agreement, H1+M15 bullish in premium = just trend chasing at top.
+    structure_confirms_sell = (h1_bias_ks == "bearish" and m15_bias_ks == "bearish" and h4_bias_ks == "bearish")
+    structure_confirms_buy  = (h1_bias_ks == "bullish" and m15_bias_ks == "bullish" and h4_bias_ks == "bullish")
+
+    d1_bias_ks = b2["timeframes"]["D1"]["bias"]
+    htf_confirms_sell = (d1_bias_ks == "bearish" and h4_bias_ks == "bearish")
+    htf_confirms_buy  = (d1_bias_ks == "bullish" and h4_bias_ks == "bullish")
+
+    # Sweep extension gate
+    if sweep_confirms_buy and current_price:
+        ssl_near = b3.get("nearest_ssl")
+        if ssl_near:
+            extension = current_price - float(ssl_near)
+            if extension > atr_ks * 2:
+                sweep_confirms_buy = False
+
+    if sweep_confirms_sell and current_price:
+        bsl_near = b3.get("nearest_bsl")
+        if bsl_near:
+            extension = float(bsl_near) - current_price
+            if extension > atr_ks * 2:
+                sweep_confirms_sell = False
+
     if direction == "sell" and price_zone == "discount":
-        kills.append(
-            f"KILL: Selling in discount zone — "
-            f"price below equilibrium, institutions buy here not sell"
-        )
+        # Allow if: sweep confirms, OR H1+M15+H4 all bearish, OR D1+H4 downtrend
+        # NEW: Also allow if H1+M15 both bearish AND D1 is not strongly bullish
+        # H4 often lags 4-8 hours during reversals — don't require H4 to have flipped yet
+        h1_m15_bearish = (h1_bias_ks == "bearish" and m15_bias_ks == "bearish")
+        d1_not_strongly_bullish = d1_bias_ks in ("bearish", "neutral", "unknown")
+        # MSS bypass: if M15 just had a bearish market structure shift, that's strong
+        # confirmation regardless of D1 — it means structure broke recently
+        mss_bearish_active = b2.get("mss_m15_active") and b2.get("mss_m15_type") == "bearish_mss"
+        intraday_sell_valid = h1_m15_bearish and (d1_not_strongly_bullish or mss_bearish_active)
+
+        if not sweep_confirms_sell and not structure_confirms_sell and not htf_confirms_sell and not intraday_sell_valid:
+            kills.append(
+                f"KILL: Selling in discount — no sweep, bearish structure, or D1+H4 downtrend"
+            )
     elif direction == "buy" and price_zone == "premium":
+        # Allow if: sweep confirms, OR H1+M15+H4 all bullish, OR D1+H4 uptrend
+        # Also allow if D1 bullish AND price at valid OB/FVG zone
+        h1_m15_bullish = (h1_bias_ks == "bullish" and m15_bias_ks == "bullish")
+        d1_not_strongly_bearish = d1_bias_ks in ("bullish", "neutral", "unknown")
+        intraday_buy_valid = h1_m15_bullish and d1_not_strongly_bearish
+        d1_bullish_at_zone = (d1_bias_ks == "bullish" and b7.get("price_at_entry_zone", False))
+
+        if not sweep_confirms_buy and not structure_confirms_buy and not htf_confirms_buy and not intraday_buy_valid and not d1_bullish_at_zone:
+            kills.append(
+                f"KILL: Buying in premium — no sweep, bullish structure, or D1+H4 uptrend"
+            )
+
+    # 13. Pullback models blocked when H4 opposes direction
+    # fvg_continuation, double_top_bottom_trap, choch_reversal etc. are LIMIT ORDER
+    # models — they wait for a pullback to an OB/FVG. When H4 is actively trending
+    # against direction, the pullback becomes a continuation of the trend and these
+    # entries just lose. Don't place limit BUY orders when H4 is bearish — the 
+    # "pullback" will keep going and hit SL.
+    _LIMIT_MODELS = {"fvg_continuation", "double_top_bottom_trap", "choch_reversal",
+                     "htf_level_reaction", "ob_mitigation", "ob_fvg_stack"}
+    h4_bias_ks2 = b2["timeframes"]["H4"]["bias"]
+    h1_bias_ks2 = b2["timeframes"]["H1"]["bias"]
+    active_model_name = b8.get("best_model_name", "")
+    if active_model_name in _LIMIT_MODELS:
+        if direction == "buy" and h4_bias_ks2 == "bearish" and h1_bias_ks2 == "bearish":
+            kills.append(
+                f"KILL: Limit/pullback model ({active_model_name}) — H4+H1 both bearish, pullback = continuation"
+            )
+        elif direction == "sell" and h4_bias_ks2 == "bullish" and h1_bias_ks2 == "bullish":
+            kills.append(
+                f"KILL: Limit/pullback model ({active_model_name}) — H4+H1 both bullish, pullback = continuation"
+            )
+
+    # ── MASTER TREND GATE ─────────────────────────────────────────
+    # When D1 AND H4 both agree on direction, the trend is established.
+    # No counter-trend signals allowed regardless of sweep or H1/M15.
+    # A bullish sweep in a D1+H4 downtrend is a liquidity grab — NOT a reversal.
+    # This single gate prevents the most common loss pattern: buying bounces in downtrends.
+    d1_bias_gate = b2["timeframes"]["D1"]["bias"]
+    h4_bias_gate = b2["timeframes"]["H4"]["bias"]
+
+    strong_downtrend = (d1_bias_gate == "bearish" and h4_bias_gate == "bearish")
+    strong_uptrend   = (d1_bias_gate == "bullish" and h4_bias_gate == "bullish")
+
+    if direction == "buy" and strong_downtrend:
         kills.append(
-            f"KILL: Buying in premium zone — "
-            f"price above equilibrium, institutions sell here not buy"
+            f"KILL: D1+H4 both bearish — strong downtrend, no BUY signals allowed"
+        )
+    elif direction == "sell" and strong_uptrend:
+        kills.append(
+            f"KILL: D1+H4 both bullish — strong uptrend, no SELL signals allowed"
         )
 
     return kills
 
 
 def resolve_direction_simple(b2, b3, b8):
-    """Simple direction resolver for kill switch context."""
-    if b8.get("best_model_name"):
+    """
+    Simple direction resolver used only for kill switch context.
+    FIX: Was using stale sweep_direction even when sweep_just_happened=False.
+    Now uses H1+M15 agreement first, matching main resolver Priority 4.
+    """
+    if b3.get("sweep_just_happened"):
         sweep_dir = b3.get("sweep_direction")
         if sweep_dir == "bearish": return "sell"
         if sweep_dir == "bullish": return "buy"
-    d1 = b2["timeframes"]["D1"]["bias"]
-    if d1 == "bearish": return "sell"
-    if d1 == "bullish": return "buy"
+    h1  = b2["timeframes"]["H1"]["bias"]
+    m15 = b2["timeframes"]["M15"]["bias"]
+    if h1 == m15 and h1 not in ("neutral", "unknown", "ranging"):
+        if h1 == "bullish": return "buy"
+        if h1 == "bearish": return "sell"
+    h4 = b2["timeframes"]["H4"]["bias"]
+    if h4 == "bearish": return "sell"
+    if h4 == "bullish": return "buy"
     return None
 
 

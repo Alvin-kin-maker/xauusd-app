@@ -1,0 +1,4 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-04-13 15:25:00,2026-04-13,overlap,sell,momentum_breakout,70.9,STRONG,True,[],4707.54,premium,bullish,False,43.48,81.3,23.53113,False,,4707.24,4727.24,200.0,4650.0,4600.76,4482.45,SL_HIT,-200.0,34,2026-04-13 16:00:00,False,False,LOSS
+2026-04-15 16:50:00,2026-04-15,new_york,buy,momentum_breakout,77.5,STRONG,True,[],4824.69,premium,bearish,False,67.62,81.3,18.98975,False,,4824.39,4809.5,148.9,4871.42,4900.0,4986.5,SL_HIT,-148.9,73,2026-04-15 18:05:00,False,False,LOSS
+2026-04-23 20:10:00,2026-04-23,new_york,sell,momentum_breakout,78.7,STRONG,True,[],4711.15,discount,bearish,False,45.14,81.3,23.21509,False,,4710.85,4730.85,200.0,4656.25,4585.32,4472.15,SL_HIT,-200.0,1138,2026-04-24 17:09:00,False,False,LOSS

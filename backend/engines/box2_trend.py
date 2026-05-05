@@ -350,7 +350,7 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
 
     structure = market_structure["structure"]
 
-    # Determine bias
+    # Determine bias from swing structure first
     if structure == "bullish":
         bias = "bullish"
     elif structure == "bearish":
@@ -358,17 +358,26 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
     else:
         bias = "neutral"
 
-    # Check most recent BOS direction + freshness
+    # BOS override — ONLY if the BOS is recent (within last 50 candles on this TF).
+    # A BOS from 200 bars ago must NOT override current LH+LL swing structure.
+    # Example: Feb bullish BOS on H1 should not keep H1 bias = bullish during a
+    # March correction where H1 is making LH+LL — that IS bearish structure.
+    # The swing structure (HH/HL/LH/LL) is more current than an old BOS event.
     bos_active = False
+    BOS_RECENCY_LIMIT = 50  # candles — beyond this, BOS is stale history
     if bos_events:
         last_bos = bos_events[-1]
-        if last_bos["type"] == "bullish_bos":
-            bias = "bullish"
-        elif last_bos["type"] == "bearish_bos":
-            bias = "bearish"
-        # BOS is fresh if it happened within last 20 candles on this TF
-        if len(df) - last_bos["broken_at"] <= 20:
-            bos_active = True
+        bars_since_bos = len(df) - last_bos["broken_at"]
+        if bars_since_bos <= BOS_RECENCY_LIMIT:
+            # Recent BOS — trust it over swing structure
+            if last_bos["type"] == "bullish_bos":
+                bias = "bullish"
+            elif last_bos["type"] == "bearish_bos":
+                bias = "bearish"
+            # BOS is fresh if it happened within last 20 candles
+            if bars_since_bos <= 20:
+                bos_active = True
+        # else: BOS is stale — swing structure (HH/HL vs LH/LL) wins
 
     # Check if CHOCH just fired (potential reversal)
     choch_active = False
@@ -403,7 +412,7 @@ def analyze_timeframe(df, timeframe_str, lookback=None):
     mss_type     = None
     if mss_events:
         last_mss = mss_events[-1]
-        if len(df) - last_mss["broken_at"] <= 5:  # within last 5 candles
+        if len(df) - last_mss["broken_at"] <= 20:  # within last 20 candles (~5h on M15)
             mss_active = True
             mss_type   = last_mss["type"]
 

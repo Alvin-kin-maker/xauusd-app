@@ -1,0 +1,2 @@
+time,date,session,direction,model,score,grade,should_trade,kill_switches,price,price_zone,sweep,sweep_fresh,rsi_m15,cot_pct,atr,news_blocked,news_reason,entry,sl,sl_pips,tp1,tp2,tp3,result,pnl_pips,bars_held,exit_time,tp1_hit,tp2_hit,tag
+2026-01-06 10:50:00,2026-01-06,london,buy,asian_range_breakout,70.0,STRONG,True,[],4466.55,premium,bullish,False,56.93,81.6,16.12411,False,,4468.97,4463.63,53.4,4483.65,4500.0,4524.68,GHOST,0,0,2026-01-14 13:53:00,False,False,GHOST
